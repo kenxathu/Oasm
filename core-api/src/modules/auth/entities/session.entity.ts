@@ -1,0 +1,26 @@
+import { BaseEntity } from '@/common/entities/base.entity';
+import { Column, Entity, Index, ManyToOne } from 'typeorm';
+import { User } from './user.entity';
+
+@Entity('sessions')
+@Index('IDX_sessions_userId', ['user'])
+@Index('IDX_sessions_expiresAt', ['expiresAt'])
+export class Session extends BaseEntity {
+  @Column('timestamp')
+  expiresAt: Date;
+
+  @Column('text', { unique: true })
+  token: string;
+
+  @Column('text', { nullable: true })
+  ipAddress?: string;
+
+  @Column('text', { nullable: true })
+  userAgent?: string;
+
+  @ManyToOne(() => User, (user) => user.sessions, { onDelete: 'CASCADE' })
+  user: User;
+
+  @ManyToOne(() => User, (user) => user.sessions, { onDelete: 'CASCADE' })
+  impersonatedBy: User;
+}

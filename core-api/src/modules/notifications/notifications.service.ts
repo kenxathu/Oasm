@@ -1,0 +1,112 @@
+import { BullMQName, NotificationStatus } from '@/common/enums/enum';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Queue } from 'bullmq';
+import { Repository } from 'typeorm';
+import { NotificationRecipient } from './entities/notification-recipient.entity';
+
+import { GetManyBaseQueryParams } from '@/common/dtos/get-many-base.dto';
+import { RedisService } from '@/services/redis/redis.service';
+import { getManyResponse } from '@/utils/getManyResponse';
+import { I18nService } from 'nestjs-i18n';
+import { CreateNotificationDto } from './dto/create-notification.dto';
+import { NotificationResponseDto } from './dto/notification.dto';
+
+@Injectable()
+export class NotificationsService {
+  constructor(
+    @InjectQueue(BullMQName.NOTIFICATION)
+    private notificationQueue: Queue,
+    @InjectRepository(NotificationRecipient)
+    private notificationRecipientRepo: Repository<NotificationRecipient>,
+    private readonly i18n: I18nService,
+    private readonly redisService: RedisService,
+  ) {}
+
+  async createNotification(body: CreateNotificationDto) {
+    await this.notificationQueue.add(BullMQName.NOTIFICATION, body);
+  }
+
+  subscribeToStream(userId: string) {
+    return this.redisService.subscriber.subscribe(`notification:${userId}`);
+  }
+
+  async getNotifications(
+    userId: string,
+    query: GetManyBaseQueryParams,
+    lang: string = 'en',
+  ) {
+    const offset = (query.page - 1) * query.limit;
+    const [notifications, total] = await this.notificationRecipientRepo
+      .createQueryBuilder('recipient')
+      .leftJoinAndSelect('recipient.notification', 'notification')
+      .where('recipient.userId = :userId', { userId })
+      .orderBy('recipient.createdAt', 'DESC')
+      .select([
+        'recipient.id',
+        'recipient.status',
+        'recipient.createdAt',
+        'notification.id',
+        'notification.type',
+        'notification.metadata',
+      ])
+      .skip(offset)
+      .take(query.limit)
+      .getManyAndCount();
+    const data = notifications.map((n) => {
+      const key = `notification.${n.notification.type}`;
+      const message = this.i18n.translate<string>(key, {
+        lang,
+        args: n.notification.metadata || {},
+      }) as string;
+      const url = this.i18n.translate<string>(key, {
+        lang: 'routers',
+        args: n.notification.metadata || {},
+      }) as string;
+
+      return {
+        id: n.id,
+        status: n.status,
+        createdAt: n.createdAt,
+        message,
+        url,
+      } as NotificationResponseDto;
+    });
+    return getManyResponse({
+      query,
+      data,
+      total,
+    });
+  }
+
+  async getUnreadCount(userId: string) {
+    return this.notificationRecipientRepo.count({
+      where: {
+        userId,
+        status: NotificationStatus.SENT,
+      },
+    });
+  }
+
+  async markAllAsRead(userId: string) {
+    return this.notificationRecipientRepo.update(
+      { userId },
+      { status: NotificationStatus.READ },
+    );
+  }
+
+  async markAllAsUnread(userId: string) {
+    return this.notificationRecipientRepo.update(
+      { userId, status: NotificationStatus.SENT },
+      { status: NotificationStatus.UNREAD },
+    );
+  }
+
+  async markAsRead(id: string, userId: string) {
+    return this.notificationRecipientRepo.update(
+      { id, userId },
+      { status: NotificationStatus.READ },
+    );
+  }
+}

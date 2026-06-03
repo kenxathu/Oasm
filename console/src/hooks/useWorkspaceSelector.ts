@@ -1,0 +1,112 @@
+import { useWorkspacesControllerGetWorkspaces } from '@/services/apis/gen/queries';
+import { setGlobalWorkspaceId } from '@/utils/workspaceState';
+import { setCookie, deleteCookie } from '@/utils/cookie';
+import { useQueryClient } from '@tanstack/react-query';
+import React from 'react';
+import createState from './createState'; // adjust path as needed
+
+// Define workspace state type
+interface WorkspaceState {
+  selectedWorkspaceId: string;
+}
+
+// Create global workspace state
+export const useWorkspaceState = createState<WorkspaceState>(
+  'workspace',
+  { selectedWorkspaceId: '' },
+  {
+    setSelectedWorkspace: (state, id) => {
+      return typeof id === 'string'
+        ? {
+            ...state,
+            selectedWorkspaceId: id,
+          }
+        : state;
+    },
+    clearSelectedWorkspace: (state) => ({
+      ...state,
+      selectedWorkspaceId: '',
+    }),
+  },
+);
+
+export function useWorkspaceSelector() {
+  const {
+    data: response,
+    isLoading,
+    refetch,
+  } = useWorkspacesControllerGetWorkspaces(
+    {
+      limit: 100,
+      page: 1,
+      isArchived: false,
+    },
+    // {
+    //   query: {
+    //     queryKey: ['workspaces'],
+    //     staleTime: 1000 * 60 * 5,
+    //   },
+    // },
+  );
+
+  const { state, setSelectedWorkspace, clearSelectedWorkspace } =
+    useWorkspaceState();
+
+  const queryClient = useQueryClient();
+
+  const handleSelectWorkspace = React.useCallback(
+    (id: string) => {
+      setSelectedWorkspace(id);
+      setGlobalWorkspaceId(id);
+      setCookie('wid', id);
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] !== 'global',
+      });
+    },
+    [queryClient, setSelectedWorkspace],
+  );
+
+  // Auto-select workspace logic
+  React.useEffect(() => {
+    if (response?.data && response.data.length > 0) {
+      const workspaceIds = response.data.map((ws) => ws.id);
+      const currentSelectedId = state.selectedWorkspaceId;
+
+      let finalSelectedId: string | null = null;
+
+      // If current selected workspace still exists, keep it
+      if (currentSelectedId && workspaceIds.includes(currentSelectedId)) {
+        finalSelectedId = currentSelectedId;
+      } else {
+        // Otherwise, select the first workspace
+        finalSelectedId = response.data[0].id;
+      }
+
+      setGlobalWorkspaceId(finalSelectedId);
+      setCookie('wid', finalSelectedId);
+
+      // Update state only if different
+      if (state.selectedWorkspaceId !== finalSelectedId) {
+        setSelectedWorkspace(finalSelectedId);
+      }
+    } else if (response?.data && response.data.length === 0) {
+      clearSelectedWorkspace();
+      setGlobalWorkspaceId(null);
+      deleteCookie('wid');
+    }
+  }, [
+    response,
+    state.selectedWorkspaceId,
+    setSelectedWorkspace,
+    clearSelectedWorkspace,
+  ]);
+
+  return {
+    workspaces: response?.data || [],
+    isLoading,
+    selectedWorkspace: state.selectedWorkspaceId,
+    handleSelectWorkspace,
+    setSelectedWorkspaceState: setSelectedWorkspace,
+    refetch,
+  };
+}

@@ -1,0 +1,94 @@
+import type { Job } from '@/modules/jobs-registry/entities/job.entity';
+import { IsString } from 'class-validator';
+import type { Request } from 'express';
+import type { DataSource } from 'typeorm';
+import type { Role } from '../enums/enum';
+
+export interface UserContextPayload {
+  expiresAt: string;
+  token: string;
+  createdAt: Date;
+  updatedAt: Date;
+  ipAddress: string;
+  userAgent: string;
+  userId: string;
+  id: string;
+}
+
+export interface UserContextPayload {
+  name: string;
+  email: string;
+  emailVerified: boolean;
+  image: string;
+  createdAt: Date;
+  updatedAt: Date;
+  role: Role;
+  id: string;
+}
+
+export interface ResultHandler {
+  dataSource: DataSource;
+  result: string;
+  job: Job;
+}
+
+export interface RequestWithMetadata extends Request {
+  session: {
+    token: string;
+    expiresAt: Date;
+    id: string;
+    createdAt: Date;
+    updatedAt: Date;
+    userId: string;
+    ipAddress?: string | null | undefined;
+    userAgent?: string | null | undefined;
+  };
+  user: {
+    id: string;
+    email: string;
+    emailVerified: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    name: string;
+    image?: string | null | undefined;
+    role: Role;
+  };
+}
+
+export interface Technology {
+  name: string;
+  description: string;
+  iconUrl: string;
+  categoryNames: string[];
+  website: string;
+}
+
+export class ScreenshotPayload {
+  @IsString()
+  url: string;
+  @IsString()
+  screenshot: string;
+}
+
+export interface ReleaseVersion {
+  url: string;
+  assets_url: string;
+  upload_url: string;
+  html_url: string;
+  id: number;
+  node_id: string;
+  tag_name: string;
+  target_commitish: string;
+  name: string;
+  draft: boolean;
+  immutable: boolean;
+  prerelease: boolean;
+  created_at: string;
+  updated_at: string;
+  published_at: string;
+  tarball_url: string;
+  zipball_url: string;
+  body: string;
+  mentions_count: number;
+  last_check: string;
+}

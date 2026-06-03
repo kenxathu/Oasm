@@ -1,0 +1,58 @@
+import { BaseEntity } from '@/common/entities/base.entity';
+import { JobRunType } from '@/common/enums/enum';
+import { HttpResponse } from '@/modules/assets/entities/http-response.entity';
+import { Port } from '@/modules/assets/entities/ports.entity';
+import { Vulnerability } from '@/modules/vulnerabilities/entities/vulnerability.entity';
+import { Workflow } from '@/modules/workflows/entities/workflow.entity';
+import { Column, Entity, Index, ManyToOne, OneToMany } from 'typeorm';
+import { Job } from './job.entity';
+
+@Entity('job_histories')
+@Index('IDX_job_histories_workflow', ['workflow'])
+export class JobHistory extends BaseEntity {
+  @OneToMany(() => Job, (job) => job.jobHistory, {
+    onDelete: 'CASCADE',
+  })
+  jobs?: Job[];
+
+  @OneToMany(() => Port, (port) => port.jobHistory, {
+    onDelete: 'CASCADE',
+  })
+  ports?: Port[];
+
+  @OneToMany(() => Vulnerability, (vulnerability) => vulnerability.jobHistory, {
+    onDelete: 'CASCADE',
+  })
+  vulnerabilities?: Vulnerability[];
+
+  @OneToMany(() => HttpResponse, (httpResponse) => httpResponse.jobHistory, {
+    onDelete: 'CASCADE',
+  })
+  httpResponses?: HttpResponse[];
+
+  /**
+   * @deprecated Counter-based completion tracking is deprecated.
+   * Workflow completion is now determined by whether the last job spawns any new jobs.
+   * This column is kept for backward compatibility and will be removed in a future migration.
+   */
+  @Column({ default: 0 })
+  pendingJobsCount: number;
+
+  @Column({ default: false })
+  isCompleted: boolean;
+
+  @ManyToOne(() => Workflow, (workflow) => workflow.jobHistories, {
+    onDelete: 'CASCADE',
+  })
+  workflow: Workflow;
+
+  @Column({ nullable: true })
+  jobHistoryName?: string;
+
+  @Column({
+    type: 'enum',
+    enum: JobRunType,
+    default: JobRunType.MANUAL,
+  })
+  jobRunType: JobRunType;
+}

@@ -1,0 +1,88 @@
+# compiled output
+**/dist/
+**/node_modules/
+**/build/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# Tests
+/coverage
+/core-api/coverage
+/.nyc_output
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# dotenv environment variable files
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+.env
+
+# temp directory
+.temp
+.tmp
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Worktrees
+.worktrees/
+worktrees/
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+.vscode/*
+.vscode/settings.json
+core-api/.storage/*
+# Nix
+/result
+/.cache/
+/nix/
+.direnv/
+.roo/*
+.open-api/*
+.agent/*
+# .agents/*
+.windsurf/*
+.claude/*
+docs/superpowers/*
+core-api/public/tools/*
+.qwen/
+.agents/plans/*
+worker/.configs.json
+worker/agent-sessions/*
+console/sw.js
+
+# Test coverage
+console/coverage/
+console/e2e/playwright-report/
+console/e2e/test-results/
+console/e2e/.auth/
