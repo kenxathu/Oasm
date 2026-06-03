@@ -425,16 +425,43 @@ export class InternalNetworksService {
     const interfaces = await this.networkInterfaceRepository.findByIds(
       dto.networkInterfaceIds,
     );
-      const workspaceId = network!.workspaceId;
+
+    if (!interfaces.length) {
+      throw new NotFoundException('No network interfaces found for the provided IDs');
+    }
+
+    const internalNetworkIds = Array.from(
+      new Set(interfaces.map((iface) => iface.internalNetworkId)),
+    );
+    const internalNetworks = await this.internalNetworkRepository.findByIds(
+      internalNetworkIds,
+    );
+
+    const networkById = new Map(
+      internalNetworks.map((network) => [network.id, network]),
+    );
+
+    const grouped = new Map<string, Map<string, string[]>>();
+
+    for (const iface of interfaces) {
+      const network = networkById.get(iface.internalNetworkId);
+      if (!network) {
+        continue;
+      }
+
+      const workspaceId = network.workspaceId;
       const internalNetworkId = iface.internalNetworkId;
 
       if (!grouped.has(workspaceId)) {
         grouped.set(workspaceId, new Map());
       }
+
       const networksInWorkspace = grouped.get(workspaceId)!;
+
       if (!networksInWorkspace.has(internalNetworkId)) {
         networksInWorkspace.set(internalNetworkId, []);
       }
+
       networksInWorkspace.get(internalNetworkId)!.push(iface.cidr);
     }
 
