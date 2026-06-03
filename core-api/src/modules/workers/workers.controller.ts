@@ -93,7 +93,11 @@ export class WorkersController {
   @GrpcMethod('WorkersService', 'GetManifest')
   grpcGetManifest(): { initCommands: string[] } {
     return {
-      initCommands: ['nuclei -ut --silent'],
+      initCommands: [
+        'nuclei -ut --silent',
+        'nmap --version',
+        'nikto -Version',
+      ],
     };
   }
 

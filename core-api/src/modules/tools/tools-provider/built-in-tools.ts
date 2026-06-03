@@ -158,4 +158,76 @@ export const builtInTools: Tool[] = [
     version: '3.4.7',
     priority: JobPriority.LOW,
   },
+  {
+    name: 'nmap',
+    category: ToolCategory.PORTS_SCANNER,
+    description:
+      'Nmap (Network Mapper) is a free and open-source network scanner used to discover hosts and services on a computer network. It sends specially crafted packets and analyzes the responses to identify open ports, services, and OS versions.',
+    logoUrl: '/static/images/nmap.png',
+    command: 'nmap -sV -sC -oX - {{value}} | cat',
+    parser: (result: string) => {
+      const ports: number[] = [];
+      const services: { port: number; service: string; state: string }[] = [];
+      
+      try {
+        const lines = result.split('\n');
+        for (const line of lines) {
+          const match = line.match(/(\d+)\/(tcp|udp)\s+(open|closed|filtered)\s+([\w-]+)/);
+          if (match) {
+            const [, port, , state, service] = match;
+            ports.push(parseInt(port, 10));
+            if (state === 'open') {
+              services.push({
+                port: parseInt(port, 10),
+                service,
+                state,
+              });
+            }
+          }
+        }
+      } catch (e) {
+        // Silent fail for parsing errors
+      }
+      
+      return ports.length > 0 ? { ports: ports.sort((a, b) => a - b), services } : ports;
+    },
+    version: '7.95',
+    priority: JobPriority.MEDIUM,
+  },
+  {
+    name: 'nikto',
+    category: ToolCategory.VULNERABILITIES,
+    description:
+      'Nikto is an open source web server scanner which performs comprehensive tests against web servers for multiple items, including dangerous files and programs, outdated server software, configuration issues, and server misconfigurations.',
+    logoUrl: '/static/images/nikto.png',
+    command: 'nikto -h {{value}} -Format json',
+    parser: (result: string) => {
+      const vulnerabilities: Vulnerability[] = [];
+      try {
+        const jsonResult = JSON.parse(result);
+        if (jsonResult.scan && Array.isArray(jsonResult.scan.details)) {
+          for (const detail of jsonResult.scan.details) {
+            if (detail.method && detail.description) {
+              const vulId = randomUUID();
+              vulnerabilities.push({
+                id: vulId,
+                name: `${detail.method} - ${detail.description}`.substring(0, 255),
+                description: detail.description,
+                severity: detail.severity?.toLowerCase() || 'info',
+                references: detail.osvdb ? [`OSVDB-${detail.osvdb}`] : [],
+                tags: [detail.method, 'nikto'],
+                affectedUrl: `{{value}}${detail.uri || '/'}`,
+                ipAddress: '{{value}}',
+              } as Vulnerability);
+            }
+          }
+        }
+      } catch (e) {
+        // Silent fail for parsing errors
+      }
+      return vulnerabilities;
+    },
+    version: '2.5.0',
+    priority: JobPriority.LOW,
+  },
 ];

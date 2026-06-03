@@ -25,12 +25,14 @@ FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Install ca-certificates for TLS, bash, chromium for browser tasks, and libpcap for naabu
+# Install ca-certificates for TLS, bash, chromium for browser tasks, libpcap for naabu, and security scanning tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     bash \
     chromium \
     libpcap0.8 \
+    nmap \
+    nikto \
     && rm -rf /var/lib/apt/lists/*
 
 # Create tool directory
