@@ -7,7 +7,7 @@ import { buttonVariants, type VariantProps } from './button-variants';
 
 export interface ButtonProps
   extends
-    React.ComponentPropsWithRef<'button'>,
+    React.PropsWithChildren<React.ComponentPropsWithRef<'button'>>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   href?: string;

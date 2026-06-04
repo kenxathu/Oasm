@@ -1,8 +1,6 @@
 FROM node:22-alpine AS base
 # Install BASH to make our lives easier for entrypoint.sh...
-RUN apk add --no-cache curl bash && \
-    npm install -g serve && \
-    npm install -g bun
+RUN apk add --no-cache curl bash
 
 WORKDIR /app
 
@@ -13,14 +11,14 @@ COPY package.json ./
 ENV NODE_ENV production
 
 COPY . .
-RUN bun install
+RUN npm install
 
 RUN \
   VITE_API_URL=APP_VITE_API_URL \
-  bun run build
+  npm run build
 
-# Clean bun cache and remove unused files
-RUN bun pm cache clean && rm -rf src test
+# Remove source files not needed in the final image
+RUN rm -rf src test node_modules/.cache
 
 FROM nginx:stable-alpine
 

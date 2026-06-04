@@ -32,8 +32,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     libpcap0.8 \
     nmap \
-    nikto \
+    git \
+    perl \
+    libnet-ssleay-perl \
+    libwww-perl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Nikto from source (some Debian images do not include a nikto package)
+RUN git clone https://github.com/sullo/nikto.git /opt/nikto && \
+    bash -lc 'if [ -f /opt/nikto/program/nikto.pl ]; then ln -s /opt/nikto/program/nikto.pl /usr/local/bin/nikto; elif [ -f /opt/nikto/nikto.pl ]; then ln -s /opt/nikto/nikto.pl /usr/local/bin/nikto; fi' && \
+    chmod +x /usr/local/bin/nikto || true
 
 # Create tool directory
 RUN mkdir -p /app/oasm-tools

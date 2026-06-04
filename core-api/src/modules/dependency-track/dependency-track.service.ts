@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AxiosResponse } from 'axios';
+import { Buffer } from 'buffer';
 import { firstValueFrom } from 'rxjs';
 import { DependencyTrackCheckResponseDto } from './dtos/dependency-track-check-response.dto';
 import { DependencyTrackVulnerabilityDto } from './dtos/dependency-track-vulnerability.dto';
@@ -56,9 +57,7 @@ export class DependencyTrackService {
 
   async testConnection(): Promise<void> {
     try {
-      await firstValueFrom(
-        this.httpService.get('/api/v1/system/health'),
-      );
+      await firstValueFrom(this.httpService.get('/api/v1/system/health'));
       this.logger.log('Dependency Track connection established successfully');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -80,6 +79,7 @@ export class DependencyTrackService {
       const contentType =
         sbomResponse.headers['content-type'] || 'application/json';
       const isJson = String(contentType).includes('json') || sbomUrl.endsWith('.json');
+
       const uploadResponse: AxiosResponse<any> = await firstValueFrom(
         this.httpService.post(
           '/api/v1/bom?autoCreate=true',
