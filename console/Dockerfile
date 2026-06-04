@@ -6,13 +6,14 @@ WORKDIR /app
 
 FROM base AS builder
 
-COPY package.json ./
+COPY ./package-lock.json ./
+COPY ./console/package.json ./
 
 ENV NODE_ENV production
 
-COPY . .
 RUN npm install
 
+COPY ./console ./
 RUN \
   VITE_API_URL=APP_VITE_API_URL \
   npm run build
