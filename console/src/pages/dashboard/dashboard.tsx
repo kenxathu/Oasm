@@ -6,7 +6,7 @@ import AssetLocationsMap from './components/asset-locations-map';
 import { AssetTrends } from './components/asset-trends';
 import IssuesTimeline from './components/issues-timeline';
 import Statistic from './components/statistic';
-import TlsStatistics from './components/ui/tls-statistics';
+import TlsStatistics from './components/tls-statistics';
 import TopAssetsVulnerabilitiesChart from './components/top-assets-vulnerabilities-chart';
 import VulnerabilityStatistic from './components/vulnerabilities-statistic';
 import { Button } from '@/components/ui/button';
@@ -58,6 +58,23 @@ export default function Dashboard() {
               <CardContent>
                 <p className="text-sm text-muted-foreground">
                   Manage internal network interfaces, IP addresses, and private targets.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="cursor-pointer hover:bg-muted/80 transition-colors">
+              <CardHeader className="flex items-center justify-between gap-2">
+                <CardTitle>Dependency Track</CardTitle>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => navigate('/dependency-track')}
+                >
+                  Open
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Run SBOM vulnerability scans through the configured Dependency Track service.
                 </p>
               </CardContent>
             </Card>
