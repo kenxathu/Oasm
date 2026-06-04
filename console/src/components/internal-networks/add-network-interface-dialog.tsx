@@ -88,24 +88,22 @@ export function AddNetworkInterfaceDialog({
       },
     );
 
-  const { mutate, isPending } = useMutation(
-    (data: CreateNetworkInterfaceDto) =>
+  const { mutate, isPending } = useMutation({
+    mutationFn: (data: CreateNetworkInterfaceDto) =>
       createNetworkInterface(networkId, data),
-    {
-      onSuccess: () => {
-        setOpen(false);
-        toast.success('Network interface created successfully');
-        onSuccess?.();
-        form.reset();
-      },
-      onError: (error: unknown) => {
-        toast.error(
-          (error as { response?: { data?: { message?: string } } })?.response
-            ?.data?.message ?? 'Failed to create network interface',
-        );
-      },
+    onSuccess: () => {
+      setOpen(false);
+      toast.success('Network interface created successfully');
+      onSuccess?.();
+      form.reset();
     },
-  );
+    onError: (error: unknown) => {
+      toast.error(
+        (error as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message ?? 'Failed to create network interface',
+      );
+    },
+  });
 
   const onSubmit = (values: FormValues) => {
     mutate(values);

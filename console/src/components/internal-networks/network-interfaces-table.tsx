@@ -79,7 +79,8 @@ export function NetworkInterfacesTable({
     DefaultMessageResponseDto,
     AxiosError<{ message: string }>,
     string
-  >((id) => deleteNetworkInterface(networkId, id), {
+  >({
+    mutationFn: (id: string) => deleteNetworkInterface(networkId, id),
     onSuccess: () => {
       toast.success('Network interface deleted');
       queryClient.invalidateQueries({
@@ -88,7 +89,7 @@ export function NetworkInterfacesTable({
           `/api/internal-networks/${networkId}/network-interfaces`,
       });
     },
-    onError: (error) => {
+    onError: (error: AxiosError<{ message: string }>) => {
       toast.error(error.response?.data.message ?? 'Failed to delete interface');
     },
   });

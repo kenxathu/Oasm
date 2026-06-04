@@ -165,31 +165,24 @@ export const builtInTools: Tool[] = [
       'Nmap (Network Mapper) is a free and open-source network scanner used to discover hosts and services on a computer network. It sends specially crafted packets and analyzes the responses to identify open ports, services, and OS versions.',
     logoUrl: '/static/images/nmap.png',
     command: 'nmap -sV -sC -oX - {{value}} | cat',
-    parser: (result: string) => {
+    parser: (result: string | undefined) => {
+      if (!result) return undefined;
       const ports: number[] = [];
-      const services: { port: number; service: string; state: string }[] = [];
       
       try {
         const lines = result.split('\n');
         for (const line of lines) {
-          const match = line.match(/(\d+)\/(tcp|udp)\s+(open|closed|filtered)\s+([\w-]+)/);
+          const match = line.match(/(\d+)\/(tcp|udp)\s+(open|closed|filtered)/);
           if (match) {
-            const [, port, , state, service] = match;
+            const [, port] = match;
             ports.push(parseInt(port, 10));
-            if (state === 'open') {
-              services.push({
-                port: parseInt(port, 10),
-                service,
-                state,
-              });
-            }
           }
         }
       } catch (e) {
         // Silent fail for parsing errors
       }
       
-      return ports.length > 0 ? { ports: ports.sort((a, b) => a - b), services } : ports;
+      return ports.sort((a, b) => a - b);
     },
     version: '7.95',
     priority: JobPriority.MEDIUM,

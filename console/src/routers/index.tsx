@@ -41,6 +41,7 @@ import Vulnerabilities from '@/pages/vulnerabilities/vulnerabilities';
 import Workers from '@/pages/workers/workers';
 import Workspaces from '@/pages/workspaces';
 import CreateWorkspace from '@/pages/workspaces/create-workspace';
+import DependencyTrack from '@/pages/dependency-track/dependency-track';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AdminRoute from './AdminRoute';
 import GuestRoute from './GuestRoute';
@@ -241,6 +242,14 @@ export const router = createBrowserRouter([
                 ),
               },
             ],
+          },
+          {
+            path: 'dependency-track',
+            element: (
+              <RequireWorkspace>
+                <DependencyTrack />
+              </RequireWorkspace>
+            ),
           },
           {
             element: (

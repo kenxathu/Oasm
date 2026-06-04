@@ -23,6 +23,7 @@ import { WorkflowsModule } from './workflows/workflows.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { AgentsModule } from './agents/agents.module';
 import { RemoteExecuteModule } from './remote-execute/remote-execute.module';
+import { DependencyTrackModule } from './dependency-track/dependency-track.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { RemoteExecuteModule } from './remote-execute/remote-execute.module';
     SystemConfigsModule,
     InternalNetworksModule,
     AgentsModule,
+    DependencyTrackModule,
     RemoteExecuteModule,
   ],
 })
