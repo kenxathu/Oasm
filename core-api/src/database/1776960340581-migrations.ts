@@ -17,7 +17,7 @@ export class Migrations1776960340581 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "templates" DROP CONSTRAINT "FK_b8a4692f30364e281a01651340a"`);
         await queryRunner.query(`ALTER TABLE "issue_comments" DROP CONSTRAINT "FK_94b28cbe4b8110d9fedcb44c489"`);
         await queryRunner.query(`ALTER TABLE "issues" DROP CONSTRAINT "FK_53edb5e14a09491261b628e0401"`);
-        await queryRunner.query(`CREATE TABLE "system_configs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" text NOT NULL DEFAULT 'Open ASM', "logoPath" text, CONSTRAINT "PK_29ac548e654c799fd885e1b9b71" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "system_configs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" text NOT NULL DEFAULT 'BAOVIET ATTACK SURFACE MANAGEMENT', "logoPath" text, CONSTRAINT "PK_29ac548e654c799fd885e1b9b71" PRIMARY KEY ("id"))`);
         await queryRunner.query(`ALTER TABLE "workspace_targets" ADD "createdAt" TIMESTAMP NOT NULL DEFAULT now()`);
         await queryRunner.query(`ALTER TABLE "workspace_targets" ADD "updatedAt" TIMESTAMP NOT NULL DEFAULT now()`);
         await queryRunner.query(`ALTER TABLE "tools" ADD "command" character varying`);

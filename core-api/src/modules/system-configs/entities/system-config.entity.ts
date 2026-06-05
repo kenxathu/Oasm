@@ -8,8 +8,11 @@ import { Column, Entity } from 'typeorm';
  */
 @Entity('system_configs')
 export class SystemConfig extends BaseEntity {
-  @ApiProperty({ description: 'System name', default: 'Open ASM' })
-  @Column('text', { default: 'Open ASM' })
+  @ApiProperty({
+    description: 'System name',
+    default: 'BAOVIET ATTACK SURFACE MANAGEMENT',
+  })
+  @Column('text', { default: 'BAOVIET ATTACK SURFACE MANAGEMENT' })
   name: string;
 
   @ApiProperty({ description: 'Path to system logo', nullable: true })

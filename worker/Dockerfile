@@ -1,10 +1,12 @@
 # Stage 1: Build
-FROM golang:1.26-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
 # Install git for go mod download
-RUN apk add --no-cache git ca-certificates
+RUN apk add --no-cache git ca-certificates curl
+
+ENV GOTOOLCHAIN=auto
 
 # Copy go mod files first (for better layer caching)
 COPY go.mod go.sum ./

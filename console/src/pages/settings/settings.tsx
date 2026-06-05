@@ -96,7 +96,8 @@ export const settingsTabGroups: SettingsTabGroup[] = [
   //       path: '/settings/mcp',
   //       content: {
   //         title: 'MCP Connect',
-  //         description: 'Connect to OASM server via MCP protocol',
+  //         description:
+  //           'Connect to BAOVIET ATTACK SURFACE MANAGEMENT server via MCP protocol',
   //       },
   //       component: <McpConnect />,
   //     },

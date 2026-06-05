@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 
 import AppLogo from '@/components/ui/app-logo';
 import {
@@ -17,6 +18,13 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { WorkspaceSwitcher } from '@/components/ui/workspace-switcher';
+import {
+  DEPENDENCY_TRACK_LATEST_RESULT_KEY,
+  DEPENDENCY_TRACK_LATEST_RESULT_EVENT,
+  getDependencyTrackLatestResult,
+  getDependencyTrackStatus,
+  type DependencyTrackLatestResult,
+} from '@/services/apis/dependency-track';
 import { useSession } from '@/utils/authClient';
 import {
   Bug,
@@ -28,6 +36,7 @@ import {
   Group,
   LayoutDashboard,
   Server,
+  ShieldCheck,
   Sparkles,
   Target,
   User,
@@ -104,6 +113,11 @@ export const menu: NavGroup[] = [
           icon: <GlobeLock />,
           url: '/internal-networks',
         },
+        {
+          title: 'Dependency Track SBOM',
+          icon: <ShieldCheck />,
+          url: '/dependency-track',
+        },
       ],
     },
     {
@@ -142,9 +156,63 @@ export const menu: NavGroup[] = [
           icon: <CirclePlay />,
           url: '/jobs',
         },
+        
       ],
     },
   ];
+
+function DependencyTrackMenuResult() {
+  const { state, isMobile } = useSidebar();
+  const [latestResult, setLatestResult] =
+    React.useState<DependencyTrackLatestResult | null>(() =>
+      getDependencyTrackLatestResult(),
+    );
+
+  const { data: status, isError } = useQuery({
+    queryKey: ['dependency-track-status'],
+    queryFn: getDependencyTrackStatus,
+    retry: 1,
+    staleTime: 60_000,
+  });
+
+  React.useEffect(() => {
+    const refresh = () => setLatestResult(getDependencyTrackLatestResult());
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === DEPENDENCY_TRACK_LATEST_RESULT_KEY) refresh();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener(DEPENDENCY_TRACK_LATEST_RESULT_EVENT, refresh);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener(DEPENDENCY_TRACK_LATEST_RESULT_EVENT, refresh);
+    };
+  }, []);
+
+  const isExpanded = state === 'expanded' || isMobile;
+  const serviceOnline = status?.status === 'ok' && !isError;
+  const findingCount = latestResult?.vulnerabilities.length ?? 0;
+
+  return (
+    <span className="ml-auto flex items-center gap-1.5">
+      <span
+        aria-label={
+          serviceOnline
+            ? 'Dependency Track connected'
+            : 'Dependency Track needs configuration'
+        }
+        className={`h-2 w-2 rounded-full ${
+          serviceOnline ? 'bg-green-500' : 'bg-orange-500'
+        }`}
+      />
+      {isExpanded && (
+        <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+          {findingCount}
+        </span>
+      )}
+    </span>
+  );
+}
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const location = useLocation();
@@ -196,6 +264,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                           >
                             {item.icon} {item.title}{' '}
                             {item.isNew && <NewBadge />}
+                            {item.url === '/dependency-track' && (
+                              <DependencyTrackMenuResult />
+                            )}
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>

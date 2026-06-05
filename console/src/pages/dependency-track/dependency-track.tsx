@@ -6,28 +6,35 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { checkSbomVulnerabilities, type DependencyTrackCheckResponseDto } from '@/services/apis/dependency-track';
+import {
+  checkSbomVulnerabilities,
+  saveDependencyTrackLatestResult,
+  type DependencyTrackCheckResponseDto,
+} from '@/services/apis/dependency-track';
 
 export default function DependencyTrackPage() {
   const [sbomUrl, setSbomUrl] = useState('');
   const [response, setResponse] = useState<DependencyTrackCheckResponseDto | null>(null);
 
-  const { mutate, isLoading } = useMutation(
-    (url: string) => checkSbomVulnerabilities({ sbomUrl: url }),
-    {
-      onSuccess: (result) => {
-        setResponse(result);
-        toast.success('Dependency Track scan completed successfully');
-      },
-      onError: (error: unknown) => {
-        setResponse(null);
-        toast.error(
-          (error as { response?: { data?: { message?: string } } })?.response?.data
-            ?.message ?? 'Failed to run Dependency Track scan',
-        );
-      },
+  const { mutate, isPending } = useMutation({
+    mutationFn: (url: string) => checkSbomVulnerabilities({ sbomUrl: url }),
+    onSuccess: (result) => {
+      setResponse(result);
+      saveDependencyTrackLatestResult({
+        ...result,
+        sbomUrl: sbomUrl.trim(),
+        scannedAt: new Date().toISOString(),
+      });
+      toast.success('Dependency Track scan completed successfully');
     },
-  );
+    onError: (error: unknown) => {
+      setResponse(null);
+      toast.error(
+        (error as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? 'Failed to run Dependency Track scan',
+      );
+    },
+  });
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -61,8 +68,8 @@ export default function DependencyTrackPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Button type="submit" disabled={isLoading}>
-                    {isLoading ? 'Scanning…' : 'Run scan'}
+                  <Button type="submit" disabled={isPending}>
+                    {isPending ? 'Scanning…' : 'Run scan'}
                   </Button>
                   <span className="text-sm text-muted-foreground">
                     The new scan is executed against the configured Dependency Track instance.

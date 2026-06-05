@@ -2,6 +2,7 @@ import {
   getRootControllerGetMetadataQueryKey,
   useRootControllerGetMetadata,
 } from '@/services/apis/gen/queries';
+import { APP_BRAND_NAME } from '@/constants/branding';
 import { Link } from 'react-router-dom';
 import Logo from './logo';
 import { useSidebar } from './sidebar';
@@ -26,14 +27,14 @@ export default function AppLogo({ type }: AppLogoProps) {
       {/* {metadata?.logoPath ? (
         <img
           src={metadata?.logoPath}
-          alt={metadata?.name || 'OASM'}
+          alt={metadata?.name || APP_BRAND_NAME}
           className="h-13 w-13 rounded-md"
         />
       ) : (
         <Radar size={type === 'small' ? 25 : 30} />
       )} */}
       {(state === 'expanded' || isMobile) && (
-        <b className="text-xl truncate">{metadata?.name || 'OASM'}</b>
+        <b className="text-xl truncate">{metadata?.name || APP_BRAND_NAME}</b>
       )}
     </Link>
   );

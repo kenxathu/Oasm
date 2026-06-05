@@ -15,7 +15,7 @@ export const defaultTemplate: Template = {
   filename: `example-template.yaml`,
   isSaved: false,
   isCreate: true,
-  content: `# Welcome to OASM Templates
+  content: `# Welcome to BAOVIET ATTACK SURFACE MANAGEMENT Templates
 
 id: example-template # Unique identifier for the template
 

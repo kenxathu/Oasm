@@ -57,9 +57,9 @@ export default function McpConnect() {
             <>
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Use this configuration to connect your MCP client to the OASM
-                  server. Copy the JSON below and add it to your MCP client
-                  configuration file.
+                  Use this configuration to connect your MCP client to the
+                  BAOVIET ATTACK SURFACE MANAGEMENT server. Copy the JSON below
+                  and add it to your MCP client configuration file.
                 </p>
                 <ViewCode code={mcpConfig} />
               </div>

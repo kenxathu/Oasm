@@ -26,7 +26,7 @@ describe('RootService', () => {
           provide: SystemConfigsService,
           useValue: {
             getConfig: jest.fn().mockResolvedValue({
-              name: 'Open ASM',
+              name: 'BAOVIET ATTACK SURFACE MANAGEMENT',
               logoPath: undefined,
             }),
           },

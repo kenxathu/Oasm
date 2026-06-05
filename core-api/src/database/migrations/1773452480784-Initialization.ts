@@ -170,7 +170,7 @@ export class Initialization1773452480784 implements MigrationInterface {
       `CREATE TABLE "mcp_permissions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" character varying NOT NULL DEFAULT 'Unnamed', "description" character varying, "value" json NOT NULL, "ownerId" uuid, CONSTRAINT "PK_7e72f74f84b8571d99f647d0151" PRIMARY KEY ("id"))`,
     );
     await queryRunner.query(
-      `CREATE TABLE "system_configs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" text NOT NULL DEFAULT 'Open ASM', "logoPath" text, CONSTRAINT "PK_29ac548e654c799fd885e1b9b71" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "system_configs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "name" text NOT NULL DEFAULT 'BAOVIET ATTACK SURFACE MANAGEMENT', "logoPath" text, CONSTRAINT "PK_29ac548e654c799fd885e1b9b71" PRIMARY KEY ("id"))`,
     );
     await queryRunner.query(
       `CREATE TYPE "public"."notifications_scope_enum" AS ENUM('SYSTEM', 'USER', 'GROUP')`,

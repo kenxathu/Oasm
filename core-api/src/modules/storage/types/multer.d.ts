@@ -1,27 +1,29 @@
-import type { Request } from 'express';
-
-export interface MulterFile extends Request {
-  file: Express.Multer.File;
-}
+import type { Readable } from 'stream';
 
 declare global {
   namespace Express {
-    interface Multer {
-      File: File;
+    namespace Multer {
+      interface File {
+        fieldname: string;
+        originalname: string;
+        encoding: string;
+        mimetype: string;
+        size: number;
+        stream: Readable;
+        destination: string;
+        filename: string;
+        path: string;
+        buffer: Buffer;
+      }
     }
-    interface File {
-      fieldname: string;
-      originalname: string;
-      encoding: string;
-      mimetype: string;
-      destination: string;
-      filename: string;
-      path: string;
-      size: number;
-    }
+
     interface Request {
       file?: Express.Multer.File;
-      files?: Express.Multer.File[];
+      files?:
+        | Express.Multer.File[]
+        | { [fieldname: string]: Express.Multer.File[] };
     }
   }
 }
+
+export {};

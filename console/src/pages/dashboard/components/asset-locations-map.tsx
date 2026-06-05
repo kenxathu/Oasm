@@ -32,7 +32,6 @@ export default function AssetLocationsMap() {
         </div>
       </div>
       <MapContainer
-        attributionControl={false}
         center={[10, 0]}
         zoom={1.4}
         zoomControl={false}
@@ -45,8 +44,7 @@ export default function AssetLocationsMap() {
         style={{ height: '100%', width: '100%' }}
       >
         <TileLayer
-          detectRetina={true}
-          crossOrigin
+          crossOrigin="anonymous"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url={`https://c.basemaps.cartocdn.com/${mapTheme}/{z}/{x}/{y}.png`}
         />
@@ -56,13 +54,13 @@ export default function AssetLocationsMap() {
             <CircleMarker
               key={location.query}
               center={[location.lat, location.lon]}
+              pathOptions={{ fillOpacity: 0.8 }}
               radius={4}
-              fillOpacity={0.8}
               className="blink-marker"
               eventHandlers={{
                 mouseover: (event: LeafletMouseEvent) =>
                   event.target.openPopup(),
-                mouseout: (event) => event.target.closePopup(),
+                mouseout: (event: LeafletMouseEvent) => event.target.closePopup(),
                 click: () => navigate(`/assets?ipAddresses=${location.query}`),
               }}
             >

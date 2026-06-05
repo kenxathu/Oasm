@@ -23,7 +23,8 @@ import { SystemConfig } from './entities/system-config.entity';
  */
 @Injectable()
 export class SystemConfigsService implements OnModuleInit {
-  private static readonly DEFAULT_SYSTEM_NAME = 'OASM';
+  private static readonly DEFAULT_SYSTEM_NAME =
+    'BAOVIET ATTACK SURFACE MANAGEMENT';
   private readonly logger = new Logger(SystemConfigsService.name);
 
   constructor(

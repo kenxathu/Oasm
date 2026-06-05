@@ -84,7 +84,7 @@ describe('SystemConfigsService', () => {
     it('should create default config if none exists and return no logo message', async () => {
       const mockConfig = {
         id: 1,
-        name: 'OASM',
+        name: 'BAOVIET ATTACK SURFACE MANAGEMENT',
         logoPath: null,
       };
 
@@ -100,7 +100,7 @@ describe('SystemConfigsService', () => {
 
       expect(mockSystemConfigRepository.findOne).toHaveBeenCalled();
       expect(mockSystemConfigRepository.create).toHaveBeenCalledWith({
-        name: 'OASM',
+        name: 'BAOVIET ATTACK SURFACE MANAGEMENT',
         logoPath: undefined,
       });
       expect(result).toEqual({

@@ -80,7 +80,7 @@ export function NetworkInterfacesTable({
     AxiosError<{ message: string }>,
     string
   >({
-    mutationFn: (id: string) => deleteNetworkInterface(networkId, id),
+    mutationFn: (id: string) => deleteNetworkInterface(networkId, id) as unknown as Promise<DefaultMessageResponseDto>,
     onSuccess: () => {
       toast.success('Network interface deleted');
       queryClient.invalidateQueries({

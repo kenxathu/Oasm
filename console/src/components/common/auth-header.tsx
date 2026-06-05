@@ -1,4 +1,5 @@
 import { useRootControllerGetMetadata } from '@/services/apis/gen/queries';
+import { APP_BRAND_NAME } from '@/constants/branding';
 import Logo from '../ui/logo';
 
 export default function AuthHeader() {
@@ -6,7 +7,7 @@ export default function AuthHeader() {
   return (
     <div className="flex gap-2 items-center justify-center">
       <Logo logoPath={metadata?.logoPath as string} width={40} height={40} />
-      <b className="text-2xl truncate">{metadata?.name || 'OASM'}</b>
+      <b className="text-2xl truncate">{metadata?.name || APP_BRAND_NAME}</b>
     </div>
   );
 }

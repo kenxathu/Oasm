@@ -4,6 +4,7 @@ import { useWorkspaceSelector } from '@/hooks/useWorkspaceSelector';
 import CreateWorkspace from '../workspaces/create-workspace';
 import AssetLocationsMap from './components/asset-locations-map';
 import { AssetTrends } from './components/asset-trends';
+import DependencyTrackVulnerabilities from './components/dependency-track-vulnerabilities';
 import IssuesTimeline from './components/issues-timeline';
 import Statistic from './components/statistic';
 import TlsStatistics from './components/tls-statistics';
@@ -13,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { workspaces, isLoading } = useWorkspaceSelector();
 
   if (isLoading) return <Page title="Dashboard" />;
@@ -24,8 +26,6 @@ export default function Dashboard() {
       </Page>
     );
   }
-
-  const navigate = useNavigate();
 
   return (
     <Page title="Dashboard">
@@ -44,6 +44,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-1 gap-4">
             <VulnerabilityStatistic />
             <TlsStatistics />
+            <DependencyTrackVulnerabilities />
             <Card className="cursor-pointer hover:bg-muted/80 transition-colors">
               <CardHeader className="flex items-center justify-between gap-2">
                 <CardTitle>Internal networks</CardTitle>
@@ -58,23 +59,6 @@ export default function Dashboard() {
               <CardContent>
                 <p className="text-sm text-muted-foreground">
                   Manage internal network interfaces, IP addresses, and private targets.
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="cursor-pointer hover:bg-muted/80 transition-colors">
-              <CardHeader className="flex items-center justify-between gap-2">
-                <CardTitle>Dependency Track</CardTitle>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => navigate('/dependency-track')}
-                >
-                  Open
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Run SBOM vulnerability scans through the configured Dependency Track service.
                 </p>
               </CardContent>
             </Card>

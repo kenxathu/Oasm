@@ -32,7 +32,6 @@ export default function IpLocationMap({ geoIp }: IpLocationMapProps) {
   return (
     <div className="h-20 w-40 rounded overflow-hidden border">
       <MapContainer
-        attributionControl={false}
         center={[geoIp!.lat, geoIp!.lon]}
         zoom={10}
         zoomControl={false}
@@ -44,8 +43,7 @@ export default function IpLocationMap({ geoIp }: IpLocationMapProps) {
         style={{ height: '100%', width: '100%' }}
       >
         <TileLayer
-          detectRetina={true}
-          crossOrigin
+          crossOrigin="anonymous"
           url={`https://c.basemaps.cartocdn.com/${mapTheme}/{z}/{x}/{y}.png`}
         />
       </MapContainer>
