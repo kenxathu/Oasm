@@ -9,6 +9,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EditInternalNetworkDialog } from './components/edit-internal-network-dialog';
+import { VulnerabilityScanScheduleCard } from './components/vulnerability-scan-schedule-card';
+import type { CronSchedule } from '@/services/apis/internal-networks';
 import { Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -39,6 +41,10 @@ export default function InternalNetworkDetail() {
   if (!network) {
     return <Page title="Internal Network Detail">Network not found</Page>;
   }
+
+  const networkWithSchedule = network as typeof network & {
+    vulnerabilityScanSchedule?: CronSchedule;
+  };
 
   return (
     <Page
@@ -93,6 +99,15 @@ export default function InternalNetworkDetail() {
         </Card>
 
         <ConnectWorker networkId={network.id} />
+
+        <VulnerabilityScanScheduleCard
+          networkId={network.id}
+          currentSchedule={
+            networkWithSchedule.vulnerabilityScanSchedule ??
+            'disabled'
+          }
+          onSuccess={() => refetch()}
+        />
 
         <NetworkInterfacesTable networkId={network.id} />
       </div>

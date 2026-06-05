@@ -1,10 +1,24 @@
 import { DefaultMessageResponseDto } from '@/common/dtos/default-message-response.dto';
+import {
+  BullMQName,
+  CronSchedule,
+  JobRunType,
+} from '@/common/enums/enum';
 import { UserContextPayload } from '@/common/interfaces/app.interface';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Job, Queue } from 'bullmq';
 import { Repository } from 'typeorm';
+import { JobsRegistryService } from '../jobs-registry/jobs-registry.service';
 import { WorkspacesService } from '../workspaces/workspaces.service';
 import { TargetsService } from '../targets/targets.service';
+import { ToolsService } from '../tools/tools.service';
+import { WorkflowsService } from '../workflows/workflows.service';
 import { CreateInternalNetworkDto } from './dtos/create-internal-network.dto';
 import { CreateNetworkInterfaceDto } from './dtos/create-network-interface.dto';
 import { CreateTargetsFromInterfacesDto } from './dtos/create-targets-from-interfaces.dto';
@@ -18,6 +32,7 @@ import {
   GetManyNetworkInterfacesQueryDto,
   GetManyNetworkInterfacesResponseDto,
 } from './dtos/get-many-network-interfaces.dto';
+import { UpdateVulnerabilityScanScheduleDto } from './dtos/update-vulnerability-scan-schedule.dto';
 import { UpdateInternalNetworkDto } from './dtos/update-internal-network.dto';
 import { UpdateNetworkInterfaceDto } from './dtos/update-network-interface.dto';
 import { InternalNetwork } from './entities/internal-network.entity';
@@ -35,6 +50,11 @@ export class InternalNetworksService {
     private readonly workerRepository: Repository<WorkerInstance>,
     private readonly workspacesService: WorkspacesService,
     private readonly targetsService: TargetsService,
+    @InjectQueue(BullMQName.INTERNAL_NETWORK_VULNERABILITY_SCAN_SCHEDULE)
+    private readonly vulnerabilityScanScheduleQueue: Queue<InternalNetwork>,
+    private readonly jobsRegistryService: JobsRegistryService,
+    private readonly toolsService: ToolsService,
+    private readonly workflowsService: WorkflowsService,
   ) {}
 
   async getManyInternalNetworks(
@@ -77,6 +97,8 @@ export class InternalNetworksService {
         createdAt: network.createdAt,
         updatedAt: network.updatedAt,
         agents: parseInt(String(rawData.agents), 10) || 0,
+        vulnerabilityScanSchedule: network.vulnerabilityScanSchedule,
+        vulnerabilityScanJobId: network.vulnerabilityScanJobId,
         createdBy: {
           id: network.creator?.id || '',
           name: network.creator?.name || '',
@@ -285,6 +307,8 @@ export class InternalNetworksService {
       createdAt: network.createdAt,
       updatedAt: network.updatedAt,
       agents: network.workers?.length || 0,
+      vulnerabilityScanSchedule: network.vulnerabilityScanSchedule,
+      vulnerabilityScanJobId: network.vulnerabilityScanJobId,
       createdBy: {
         id: network.creator?.id || '',
         name: network.creator?.name || '',
@@ -333,6 +357,134 @@ export class InternalNetworksService {
     });
 
     return { message: 'Network interface created successfully' };
+  }
+
+  async updateVulnerabilityScanSchedule(
+    id: string,
+    dto: UpdateVulnerabilityScanScheduleDto,
+    user: UserContextPayload,
+  ): Promise<DefaultMessageResponseDto> {
+    const internalNetwork = await this.internalNetworkRepository.findOne({
+      where: { id },
+    });
+
+    if (!internalNetwork) {
+      throw new NotFoundException('Internal network not found');
+    }
+
+    await this.workspacesService.getWorkspaceByIdAndOwner(
+      internalNetwork.workspaceId,
+      user,
+    );
+
+    const job = await this.updateVulnerabilityScanScheduleJob(
+      internalNetwork,
+      dto.vulnerabilityScanSchedule,
+    );
+
+    await this.internalNetworkRepository.update(id, {
+      vulnerabilityScanSchedule: dto.vulnerabilityScanSchedule,
+      vulnerabilityScanJobId: job?.repeatJobKey ?? null,
+    });
+
+    return {
+      message:
+        'Internal network vulnerability scan schedule updated successfully',
+    };
+  }
+
+  async runScheduledVulnerabilityScan(
+    internalNetworkId: string,
+    jobRunType: JobRunType = JobRunType.SCHEDULED,
+  ): Promise<DefaultMessageResponseDto> {
+    const internalNetwork = await this.internalNetworkRepository.findOne({
+      where: { id: internalNetworkId },
+    });
+
+    if (!internalNetwork) {
+      throw new NotFoundException('Internal network not found');
+    }
+
+    const targetRows = await this.internalNetworkRepository
+      .createQueryBuilder('network')
+      .innerJoin('network.targets', 'target')
+      .select('target.id', 'id')
+      .where('network.id = :internalNetworkId', { internalNetworkId })
+      .getRawMany<{ id: string }>();
+    const targetIds = targetRows.map((row) => row.id);
+
+    if (targetIds.length === 0) {
+      throw new BadRequestException(
+        'Internal network does not have targets to scan. Create targets from network interfaces first.',
+      );
+    }
+
+    const tools = await this.toolsService.getToolByNames({
+      names: ['nuclei'],
+      isInstalled: true,
+    });
+
+    if (!tools.length) {
+      throw new BadRequestException(
+        'Nuclei vulnerability scanner is not installed or available.',
+      );
+    }
+
+    const workflow = await this.workflowsService.workflowRepository.findOne({
+      where: {
+        workspace: {
+          id: internalNetwork.workspaceId,
+        },
+        filePath: 'vulnerability_scan_basic.yaml',
+      },
+      relations: ['workspace'],
+    });
+
+    if (!workflow) {
+      throw new NotFoundException(
+        'Vulnerability scanning workflow not found in the workspace.',
+      );
+    }
+
+    const tool = tools[0];
+    await this.jobsRegistryService.createNewJob({
+      tool,
+      targetIds,
+      workflow,
+      priority: tool.priority,
+      workspaceId: internalNetwork.workspaceId,
+      jobName: 'Internal network vulnerability scan',
+      jobRunType,
+    });
+
+    return {
+      message: `Scheduled vulnerability scan started for ${targetIds.length} internal network targets`,
+    };
+  }
+
+  private async updateVulnerabilityScanScheduleJob(
+    internalNetwork: InternalNetwork,
+    vulnerabilityScanSchedule: CronSchedule,
+  ): Promise<Job<InternalNetwork> | null> {
+    if (internalNetwork.vulnerabilityScanJobId) {
+      await this.vulnerabilityScanScheduleQueue.removeJobScheduler(
+        internalNetwork.vulnerabilityScanJobId,
+      );
+    }
+
+    if (vulnerabilityScanSchedule === CronSchedule.DISABLED) {
+      return null;
+    }
+
+    return this.vulnerabilityScanScheduleQueue.add(
+      internalNetwork.id,
+      { id: internalNetwork.id } as InternalNetwork,
+      {
+        repeat: {
+          pattern: vulnerabilityScanSchedule,
+        },
+      },
+    );
   }
 
   async updateNetworkInterfaceById(

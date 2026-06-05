@@ -1,11 +1,16 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { getQueueToken } from '@nestjs/bullmq';
 import type { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BullMQName, CronSchedule, JobRunType } from '@/common/enums/enum';
 import { WorkspacesService } from '../workspaces/workspaces.service';
 import { TargetsService } from '../targets/targets.service';
+import { JobsRegistryService } from '../jobs-registry/jobs-registry.service';
+import { ToolsService } from '../tools/tools.service';
+import { WorkflowsService } from '../workflows/workflows.service';
 import type { CreateInternalNetworkDto } from './dtos/create-internal-network.dto';
 import type { GetManyInternalNetworksQueryDto } from './dtos/get-many-internal-networks.dto';
 import type {
@@ -24,8 +29,28 @@ describe('InternalNetworksService', () => {
   let networkInterfaceRepo: Repository<NetworkInterface>;
   let workspacesService: WorkspacesService;
   let workerRepository: Repository<WorkerInstance>;
+  let scheduleQueue: { add: jest.Mock; removeJobScheduler: jest.Mock };
+  let jobsRegistryService: Partial<JobsRegistryService>;
+  let toolsService: Partial<ToolsService>;
+  let workflowsService: Partial<WorkflowsService>;
 
   beforeEach(async () => {
+    scheduleQueue = {
+      add: jest.fn(),
+      removeJobScheduler: jest.fn(),
+    };
+    jobsRegistryService = {
+      createNewJob: jest.fn(),
+    };
+    toolsService = {
+      getToolByNames: jest.fn(),
+    };
+    workflowsService = {
+      workflowRepository: {
+        findOne: jest.fn(),
+      } as any,
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InternalNetworksService,
@@ -36,6 +61,7 @@ describe('InternalNetworksService', () => {
             findOne: jest.fn(),
             save: jest.fn(),
             remove: jest.fn(),
+            update: jest.fn(),
             createQueryBuilder: jest.fn().mockReturnValue({
               leftJoinAndSelect: jest.fn().mockReturnThis(),
               addSelect: jest.fn().mockReturnThis(),
@@ -89,6 +115,24 @@ describe('InternalNetworksService', () => {
             createMultipleTargets: jest.fn(),
           },
         },
+        {
+          provide: getQueueToken(
+            BullMQName.INTERNAL_NETWORK_VULNERABILITY_SCAN_SCHEDULE,
+          ),
+          useValue: scheduleQueue,
+        },
+        {
+          provide: JobsRegistryService,
+          useValue: jobsRegistryService,
+        },
+        {
+          provide: ToolsService,
+          useValue: toolsService,
+        },
+        {
+          provide: WorkflowsService,
+          useValue: workflowsService,
+        },
       ],
     }).compile();
 
@@ -107,6 +151,90 @@ describe('InternalNetworksService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('scheduled vulnerability scans', () => {
+    it('should schedule vulnerability scans for an internal network', async () => {
+      const networkId = randomUUID();
+      const user = { id: randomUUID() };
+      const internalNetwork = {
+        id: networkId,
+        workspaceId: randomUUID(),
+        vulnerabilityScanJobId: null,
+      } as InternalNetwork;
+      scheduleQueue.add.mockResolvedValue({ repeatJobKey: 'repeat-key' });
+      jest
+        .spyOn(internalNetworkRepo, 'findOne')
+        .mockResolvedValue(internalNetwork);
+      jest.spyOn(internalNetworkRepo, 'update').mockResolvedValue({} as any);
+      jest
+        .spyOn(workspacesService, 'getWorkspaceByIdAndOwner')
+        .mockResolvedValue({} as any);
+
+      const result = await service.updateVulnerabilityScanSchedule(
+        networkId,
+        { vulnerabilityScanSchedule: CronSchedule.DAILY },
+        user as any,
+      );
+
+      expect(scheduleQueue.add).toHaveBeenCalledWith(
+        networkId,
+        { id: networkId },
+        { repeat: { pattern: CronSchedule.DAILY } },
+      );
+      expect(internalNetworkRepo.update).toHaveBeenCalledWith(networkId, {
+        vulnerabilityScanSchedule: CronSchedule.DAILY,
+        vulnerabilityScanJobId: 'repeat-key',
+      });
+      expect(result).toEqual({
+        message: 'Internal network vulnerability scan schedule updated successfully',
+      });
+    });
+
+    it('should create scheduled vulnerability worker jobs for network targets', async () => {
+      const networkId = randomUUID();
+      const workspaceId = randomUUID();
+      const targetIds = [randomUUID(), randomUUID()];
+      const tool = { name: 'nuclei', priority: 2 };
+      const workflow = { id: randomUUID(), workspace: { id: workspaceId } };
+      const queryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue(targetIds.map((id) => ({ id }))),
+      };
+
+      jest.spyOn(internalNetworkRepo, 'findOne').mockResolvedValue({
+        id: networkId,
+        workspaceId,
+      } as InternalNetwork);
+      jest
+        .spyOn(internalNetworkRepo, 'createQueryBuilder')
+        .mockReturnValue(queryBuilder as any);
+      (toolsService.getToolByNames as jest.Mock).mockResolvedValue([tool]);
+      (
+        workflowsService.workflowRepository!.findOne as jest.Mock
+      ).mockResolvedValue(workflow);
+
+      const result = await service.runScheduledVulnerabilityScan(
+        networkId,
+        JobRunType.SCHEDULED,
+      );
+
+      expect(jobsRegistryService.createNewJob).toHaveBeenCalledWith({
+        tool,
+        targetIds,
+        workflow,
+        priority: tool.priority,
+        workspaceId,
+        jobName: 'Internal network vulnerability scan',
+        jobRunType: JobRunType.SCHEDULED,
+      });
+      expect(result).toEqual({
+        message: `Scheduled vulnerability scan started for ${targetIds.length} internal network targets`,
+      });
+    });
   });
 
   describe('createInternalNetwork', () => {

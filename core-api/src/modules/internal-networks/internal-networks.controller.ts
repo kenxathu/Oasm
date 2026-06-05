@@ -30,6 +30,7 @@ import {
 } from './dtos/get-many-network-interfaces.dto';
 import { UpdateInternalNetworkDto } from './dtos/update-internal-network.dto';
 import { UpdateNetworkInterfaceDto } from './dtos/update-network-interface.dto';
+import { UpdateVulnerabilityScanScheduleDto } from './dtos/update-vulnerability-scan-schedule.dto';
 import { InternalNetworksService } from './internal-networks.service';
 
 @Controller('internal-networks')
@@ -103,6 +104,31 @@ export class InternalNetworksController {
     @UserContext() user: UserContextPayload,
   ): Promise<DefaultMessageResponseDto> {
     return this.internalNetworksService.createTargetsFromInterfaces(dto, user);
+  }
+
+  @Doc({
+    summary: 'Update internal network vulnerability scan schedule',
+    description:
+      'Schedules worker-based vulnerability scans for targets belonging to an internal network.',
+    response: {
+      serialization: DefaultMessageResponseDto,
+    },
+    request: {
+      getWorkspaceId: true,
+    },
+  })
+  @Patch(':id/vulnerability-schedule')
+  @UseGuards(WorkspaceOwnerGuard)
+  updateVulnerabilityScanSchedule(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateVulnerabilityScanScheduleDto,
+    @UserContext() user: UserContextPayload,
+  ): Promise<DefaultMessageResponseDto> {
+    return this.internalNetworksService.updateVulnerabilityScanSchedule(
+      id,
+      dto,
+      user,
+    );
   }
 
   @Doc({

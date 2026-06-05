@@ -1,11 +1,12 @@
 import { BaseEntity } from '@/common/entities/base.entity';
+import { CronSchedule } from '@/common/enums/enum';
 import { User } from '@/modules/auth/entities/user.entity';
 import { Workspace } from '@/modules/workspaces/entities/workspace.entity';
 import { Target } from '@/modules/targets/entities/target.entity';
 import { WorkerInstance } from '@/modules/workers/entities/worker.entity';
 import { NetworkInterface } from '@/modules/internal-networks/entities/network-interface.entity';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { Column, Entity, Index, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 
 @Entity('internal_networks')
@@ -30,6 +31,20 @@ export class InternalNetwork extends BaseEntity {
 
   @Column({ type: 'uuid' })
   createdBy: string;
+
+  @ApiProperty({ enum: CronSchedule, enumName: 'CronSchedule' })
+  @IsOptional()
+  @IsEnum(CronSchedule)
+  @Column({
+    type: 'enum',
+    enum: CronSchedule,
+    default: CronSchedule.DISABLED,
+    nullable: true,
+  })
+  vulnerabilityScanSchedule: CronSchedule;
+
+  @Column({ nullable: true })
+  vulnerabilityScanJobId?: string | null;
 
   @ManyToOne(() => User, (user) => user.createdInternalNetworks, {
     nullable: true,

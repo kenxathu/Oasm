@@ -2,6 +2,7 @@ import {
   GetManyBaseQueryParams,
   GetManyBaseResponseDto,
 } from '@/common/dtos/get-many-base.dto';
+import { CronSchedule } from '@/common/enums/enum';
 import { User } from '@/modules/auth/entities/user.entity';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsUUID } from 'class-validator';
@@ -43,6 +44,12 @@ export class InternalNetworkResponseDto {
     description: 'The number of agents connected to this internal network',
   })
   agents: number;
+
+  @ApiProperty({ enum: CronSchedule, enumName: 'CronSchedule' })
+  vulnerabilityScanSchedule: CronSchedule;
+
+  @ApiProperty({ required: false, nullable: true })
+  vulnerabilityScanJobId?: string | null;
 }
 
 /**

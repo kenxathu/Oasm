@@ -126,6 +126,7 @@ export enum ApiKeyType {
 export enum BullMQName {
   ASSETS_DISCOVERY_SCHEDULE = 'assets-discovery-schedule',
   ASSET_GROUPS_WORKFLOW_SCHEDULE = 'asset-groups-workflow-schedule',
+  INTERNAL_NETWORK_VULNERABILITY_SCAN_SCHEDULE = 'internal-network-vulnerability-scan-schedule',
   NOTIFICATION = 'notification',
   JOB_RESULT = 'job-result',
   ISSUE_CREATION = 'issue-creation',

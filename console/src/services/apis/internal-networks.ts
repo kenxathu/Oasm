@@ -15,6 +15,18 @@ export type DefaultMessageResponseDto = {
   message: string;
 };
 
+export type CronSchedule =
+  | 'disabled'
+  | '0 0 * * *'
+  | '0 0 */3 * *'
+  | '0 0 * * 0'
+  | '0 0 */14 * *'
+  | '0 0 1 * *';
+
+export type UpdateVulnerabilityScanScheduleDto = {
+  vulnerabilityScanSchedule: CronSchedule;
+};
+
 export const createNetworkInterface = (
   networkId: string,
   data: CreateNetworkInterfaceDto,
@@ -42,5 +54,15 @@ export const deleteNetworkInterface = (
 ) => {
   return axiosInstance.delete<DefaultMessageResponseDto>(
     `/api/internal-networks/${networkId}/network-interfaces/${id}`,
+  );
+};
+
+export const updateVulnerabilityScanSchedule = (
+  networkId: string,
+  data: UpdateVulnerabilityScanScheduleDto,
+) => {
+  return axiosInstance.patch<DefaultMessageResponseDto>(
+    `/api/internal-networks/${networkId}/vulnerability-schedule`,
+    data,
   );
 };
