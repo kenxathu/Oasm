@@ -29,6 +29,7 @@ import DetailProvider from '@/pages/providers/detail-provider';
 import EditProviderPage from '@/pages/providers/edit-provider';
 import ProvidersPage from '@/pages/providers/providers';
 import Register from '@/pages/register/register';
+import ScanActivityPage from '@/pages/scan-activity/scan-activity';
 import Search from '@/pages/search/search';
 import Settings from '@/pages/settings/settings';
 import DetailTarget from '@/pages/targets/detail-target';
@@ -248,6 +249,14 @@ export const router = createBrowserRouter([
             element: (
               <RequireWorkspace>
                 <DependencyTrack />
+              </RequireWorkspace>
+            ),
+          },
+          {
+            path: 'scan-activity',
+            element: (
+              <RequireWorkspace>
+                <ScanActivityPage />
               </RequireWorkspace>
             ),
           },

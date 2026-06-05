@@ -32,6 +32,7 @@ import {
   UpdateResultDto,
   WorkerIdParams,
 } from './dto/jobs-registry.dto';
+import { ScanActivityResponseDto } from './dto/scan-activity.dto';
 import { Job } from './entities/job.entity';
 import { JobsRegistryService } from './jobs-registry.service';
 
@@ -65,6 +66,24 @@ export class JobsRegistryController {
   @Get('/timeline')
   getJobsTimeline(@WorkspaceId() workspaceId: string) {
     return this.jobsRegistryService.getJobsTimeline(workspaceId);
+  }
+
+  @Doc({
+    summary: 'Get live scan activity',
+    description:
+      'Retrieves active workers and recent scan job log events for the current workspace.',
+    response: {
+      serialization: ScanActivityResponseDto,
+    },
+    request: {
+      getWorkspaceId: true,
+    },
+  })
+  @Get('/scan-activity')
+  getScanActivity(
+    @WorkspaceId() workspaceId: string,
+  ): Promise<ScanActivityResponseDto> {
+    return this.jobsRegistryService.getScanActivity(workspaceId);
   }
 
   @Doc({

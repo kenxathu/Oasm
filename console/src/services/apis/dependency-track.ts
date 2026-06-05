@@ -54,7 +54,9 @@ export type CheckSbomDto = {
 };
 
 export type DependencyTrackLatestResult = DependencyTrackCheckResponseDto & {
-  sbomUrl: string;
+  sbomUrl?: string;
+  sbomFileName?: string;
+  source: 'url' | 'file';
   scannedAt: string;
 };
 
@@ -70,6 +72,19 @@ export const checkSbomVulnerabilities = (
     '/api/dependency-track/sbom',
     data,
   ) as unknown as Promise<DependencyTrackCheckResponseDto>;
+};
+
+export const checkSbomFileVulnerabilities = (
+  file: File,
+): Promise<DependencyTrackCheckResponseDto> => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return axiosInstance.post('/api/dependency-track/sbom/file', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  }) as unknown as Promise<DependencyTrackCheckResponseDto>;
 };
 
 export const getDependencyTrackStatus =

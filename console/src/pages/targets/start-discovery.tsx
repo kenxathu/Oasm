@@ -208,7 +208,7 @@ export default function StartDiscovery() {
             queryClient.refetchQueries({
               queryKey: ['targets'],
             });
-            navigate(`/targets?page=1&pageSize=100`);
+            navigate('/scan-activity');
           }
 
           if (res.totalSkipped > 0) {

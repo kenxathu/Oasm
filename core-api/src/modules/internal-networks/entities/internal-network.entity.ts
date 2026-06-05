@@ -43,7 +43,7 @@ export class InternalNetwork extends BaseEntity {
   })
   vulnerabilityScanSchedule: CronSchedule;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   vulnerabilityScanJobId?: string | null;
 
   @ManyToOne(() => User, (user) => user.createdInternalNetworks, {

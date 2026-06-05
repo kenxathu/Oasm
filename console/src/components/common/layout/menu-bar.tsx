@@ -25,8 +25,10 @@ import {
   getDependencyTrackStatus,
   type DependencyTrackLatestResult,
 } from '@/services/apis/dependency-track';
+import { getScanActivity } from '@/services/apis/scan-activity';
 import { useSession } from '@/utils/authClient';
 import {
+  Activity,
   Bug,
   CircleDot,
   CirclePlay,
@@ -96,6 +98,11 @@ export const menu: NavGroup[] = [
           title: 'Targets',
           icon: <Target />,
           url: '/targets',
+        },
+        {
+          title: 'Scan Activity',
+          icon: <Activity />,
+          url: '/scan-activity',
         },
         {
           title: 'Groups',
@@ -214,6 +221,35 @@ function DependencyTrackMenuResult() {
   );
 }
 
+function ScanActivityMenuResult() {
+  const { state, isMobile } = useSidebar();
+  const { data } = useQuery({
+    queryKey: ['scan-activity-menu'],
+    queryFn: getScanActivity,
+    refetchInterval: 5000,
+  });
+  const isExpanded = state === 'expanded' || isMobile;
+  const activeCount = data?.activeJobsCount ?? 0;
+  const pendingCount = data?.pendingJobsCount ?? 0;
+  const hasActivity = activeCount + pendingCount > 0;
+
+  return (
+    <span className="ml-auto flex items-center gap-1.5">
+      <span
+        aria-label={hasActivity ? 'Scans running' : 'No scans running'}
+        className={`h-2 w-2 rounded-full ${
+          hasActivity ? 'bg-green-500' : 'bg-muted-foreground/50'
+        }`}
+      />
+      {isExpanded && hasActivity ? (
+        <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+          {activeCount}/{pendingCount}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const location = useLocation();
   const { state, isMobile, setOpenMobile } = useSidebar();
@@ -266,6 +302,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             {item.isNew && <NewBadge />}
                             {item.url === '/dependency-track' && (
                               <DependencyTrackMenuResult />
+                            )}
+                            {item.url === '/scan-activity' && (
+                              <ScanActivityMenuResult />
                             )}
                           </Link>
                         </SidebarMenuButton>

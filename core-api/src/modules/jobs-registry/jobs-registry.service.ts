@@ -49,6 +49,11 @@ import {
   JobTimelineResponseDto,
   UpdateResultDto,
 } from './dto/jobs-registry.dto';
+import {
+  ScanActivityLogDto,
+  ScanActivityResponseDto,
+  ScanActivityWorkerDto,
+} from './dto/scan-activity.dto';
 import { JobErrorLog } from './entities/job-error-log.entity';
 import { JobHistory } from './entities/job-history.entity';
 import { Job } from './entities/job.entity';
@@ -714,6 +719,214 @@ export class JobsRegistryService {
     return { data: timelineItems };
   }
 
+  public async getScanActivity(
+    workspaceId: string,
+  ): Promise<ScanActivityResponseDto> {
+    const workers = await this.getScanActivityWorkers(workspaceId);
+    const logs = await this.getScanActivityLogs(workspaceId);
+
+    return {
+      workers,
+      logs,
+      activeJobsCount: logs.filter(
+        (log) => log.status === JobStatus.IN_PROGRESS,
+      ).length,
+      pendingJobsCount: logs.filter((log) => log.status === JobStatus.PENDING)
+        .length,
+    };
+  }
+
+  private async getScanActivityWorkers(
+    workspaceId: string,
+  ): Promise<ScanActivityWorkerDto[]> {
+    const rows = await this.dataSource.query<ScanActivityWorkerRow[]>(
+      `
+      select
+        w.id,
+        w.name,
+        w.os,
+        w."ipAddress" as "ipAddress",
+        w.type,
+        w.scope,
+        w."lastSeenAt" as "lastSeenAt",
+        (
+          select count(*)
+          from jobs j
+          join assets a on j."assetId" = a.id
+          join targets t on a."targetId" = t.id
+          join workspace_targets wt on wt."targetId" = t.id
+          where j."workerId"::uuid = w.id
+            and j.status = $2
+            and wt."workspaceId" = $1
+        )::int as "currentJobsCount"
+      from workers w
+      where w."workspaceId" = $1
+        or w.scope = $3
+        or exists (
+          select 1
+          from jobs j
+          join assets a on j."assetId" = a.id
+          join targets t on a."targetId" = t.id
+          join workspace_targets wt on wt."targetId" = t.id
+          where j."workerId"::uuid = w.id
+            and wt."workspaceId" = $1
+        )
+      order by "currentJobsCount" desc, w."lastSeenAt" desc
+      `,
+      [workspaceId, JobStatus.IN_PROGRESS, WorkerScope.CLOUD],
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      os: row.os,
+      ipAddress: row.ipAddress,
+      type: row.type,
+      scope: row.scope,
+      isOnline:
+        new Date().getTime() - new Date(row.lastSeenAt).getTime() < 30000,
+      currentJobsCount: Number(row.currentJobsCount ?? 0),
+      lastSeenAt: new Date(row.lastSeenAt),
+    }));
+  }
+
+  private async getScanActivityLogs(
+    workspaceId: string,
+  ): Promise<ScanActivityLogDto[]> {
+    const rows = await this.dataSource.query<ScanActivityLogRow[]>(
+      `
+      select
+        j.id,
+        j.status,
+        j."createdAt" as "createdAt",
+        j."updatedAt" as "updatedAt",
+        j."pickJobAt" as "pickJobAt",
+        j."completedAt" as "completedAt",
+        j."workerId" as "workerId",
+        j.command,
+        jh."jobRunType" as "jobRunType",
+        t.id as "targetId",
+        t.value as target,
+        a.value as asset,
+        tool.name as tool,
+        w.name as "workerName",
+        coalesce(
+          array_remove(array_agg(error_logs."logMessage" order by error_logs."createdAt"), null),
+          '{}'::varchar[]
+        ) as "errorLogs"
+      from jobs j
+      join assets a on j."assetId" = a.id
+      join targets t on a."targetId" = t.id
+      join workspace_targets wt on wt."targetId" = t.id
+      left join tools tool on j."toolId" = tool.id
+      left join workers w on j."workerId"::uuid = w.id
+      left join job_histories jh on j."jobHistoryId" = jh.id
+      left join job_error_log error_logs on error_logs."jobId" = j.id
+      where wt."workspaceId" = $1
+      group by
+        j.id,
+        j.status,
+        j."createdAt",
+        j."updatedAt",
+        j."pickJobAt",
+        j."completedAt",
+        j."workerId",
+        j.command,
+        jh."jobRunType",
+        t.id,
+        t.value,
+        a.value,
+        tool.name,
+        w.name
+      order by
+        case
+          when j.status = $2 then 0
+          when j.status = $3 then 1
+          when j.status = $4 then 2
+          else 3
+        end,
+        j."updatedAt" desc
+      limit 80
+      `,
+      [
+        workspaceId,
+        JobStatus.IN_PROGRESS,
+        JobStatus.PENDING,
+        JobStatus.FAILED,
+      ],
+    );
+
+    return rows.map((row) => {
+      const status = row.status as JobStatus;
+      const errorLogs = Array.isArray(row.errorLogs) ? row.errorLogs : [];
+
+      return {
+        id: row.id,
+        status,
+        message: this.createScanActivityMessage({
+          status,
+          tool: row.tool,
+          asset: row.asset,
+          target: row.target,
+          workerName: row.workerName,
+        }),
+        targetId: row.targetId,
+        target: row.target,
+        asset: row.asset,
+        tool: row.tool,
+        workerId: row.workerId,
+        workerName: row.workerName,
+        command: row.command,
+        jobRunType: row.jobRunType as JobRunType | undefined,
+        errorLogs,
+        createdAt: new Date(row.createdAt),
+        updatedAt: new Date(row.updatedAt),
+        pickJobAt: row.pickJobAt ? new Date(row.pickJobAt) : undefined,
+        completedAt: row.completedAt ? new Date(row.completedAt) : undefined,
+      };
+    });
+  }
+
+  private createScanActivityMessage({
+    status,
+    tool,
+    asset,
+    target,
+    workerName,
+  }: {
+    status: JobStatus;
+    tool?: string;
+    asset?: string;
+    target?: string;
+    workerName?: string;
+  }): string {
+    const scanTarget = asset || target || 'target';
+    const scanner = tool || 'scanner';
+    const worker = workerName || 'a worker';
+
+    if (status === JobStatus.IN_PROGRESS) {
+      return `${worker} is running ${scanner} on ${scanTarget}`;
+    }
+
+    if (status === JobStatus.PENDING) {
+      return `${scanner} is queued for ${scanTarget}`;
+    }
+
+    if (status === JobStatus.COMPLETED) {
+      return `${scanner} completed for ${scanTarget}`;
+    }
+
+    if (status === JobStatus.FAILED) {
+      return `${scanner} failed for ${scanTarget}`;
+    }
+
+    if (status === JobStatus.CANCELLED) {
+      return `${scanner} was cancelled for ${scanTarget}`;
+    }
+
+    return `${scanner} updated for ${scanTarget}`;
+  }
+
   /**
    * Gets the next step for a job based on workflow definition.
    * @param job the completed job
@@ -1110,3 +1323,32 @@ export class JobsRegistryService {
     }
   }
 }
+
+type ScanActivityWorkerRow = {
+  id: string;
+  name?: string;
+  os?: string;
+  ipAddress?: string;
+  type: string;
+  scope: string;
+  lastSeenAt: Date | string;
+  currentJobsCount: number | string;
+};
+
+type ScanActivityLogRow = {
+  id: string;
+  status: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  pickJobAt?: Date | string | null;
+  completedAt?: Date | string | null;
+  workerId?: string;
+  command?: string;
+  jobRunType?: string;
+  targetId?: string;
+  target?: string;
+  asset?: string;
+  tool?: string;
+  workerName?: string;
+  errorLogs?: string[];
+};

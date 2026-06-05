@@ -3,6 +3,7 @@ import { RedisService } from '@/services/redis/redis.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -15,58 +16,69 @@ import { JobHistory } from './entities/job-history.entity';
 import { Job } from './entities/job.entity';
 import { JobsRegistryService } from './jobs-registry.service';
 
+type LooseMock = ReturnType<typeof jest.fn> & {
+  mockRejectedValue(value: unknown): LooseMock;
+  mockResolvedValue(value: unknown): LooseMock;
+  mockResolvedValueOnce(value: unknown): LooseMock;
+  mockReturnThis(): LooseMock;
+  mockReturnValue(value: unknown): LooseMock;
+};
+
+const mockFn = (): LooseMock => jest.fn();
+
 describe('JobsRegistryService', () => {
   let service: JobsRegistryService;
 
   const mockJobRepository = {
-    createQueryBuilder: jest.fn().mockReturnThis(),
-    innerJoin: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
-    getOne: jest.fn(),
-    findOne: jest.fn(),
-    save: jest.fn(),
-    count: jest.fn(),
-    exists: jest.fn(),
+    createQueryBuilder: mockFn().mockReturnThis(),
+    innerJoin: mockFn().mockReturnThis(),
+    where: mockFn().mockReturnThis(),
+    andWhere: mockFn().mockReturnThis(),
+    getOne: mockFn(),
+    findOne: mockFn(),
+    save: mockFn(),
+    count: mockFn(),
+    exists: mockFn(),
   };
 
   const mockJobHistoryRepository = {
-    createQueryBuilder: jest.fn(),
-    findOne: jest.fn(),
-    update: jest.fn(),
+    createQueryBuilder: mockFn(),
+    findOne: mockFn(),
+    update: mockFn(),
   };
 
   const mockJobErrorLogRepository = {
-    createQueryBuilder: jest.fn(),
+    createQueryBuilder: mockFn(),
   };
 
   const mockDataSource = {
-    createQueryRunner: jest.fn(),
-    getRepository: jest.fn(),
+    createQueryRunner: mockFn(),
+    getRepository: mockFn(),
+    query: mockFn(),
   };
 
   const mockDataAdapterService = {
-    syncData: jest.fn(),
+    syncData: mockFn(),
   };
 
   const mockStorageService = {
-    upload: jest.fn(),
+    upload: mockFn(),
   };
 
   const mockRedisService = {
-    publish: jest.fn(),
+    publish: mockFn(),
     client: {
-      incr: jest.fn(),
-      decr: jest.fn(),
-      del: jest.fn(),
-      get: jest.fn(),
-      set: jest.fn(),
+      incr: mockFn(),
+      decr: mockFn(),
+      del: mockFn(),
+      get: mockFn(),
+      set: mockFn(),
     },
   };
 
   const mockToolsService = {
-    getInstalledTools: jest.fn(),
-    getToolByNames: jest.fn(),
+    getInstalledTools: mockFn(),
+    getToolByNames: mockFn(),
   };
 
   beforeEach(async () => {
@@ -106,11 +118,11 @@ describe('JobsRegistryService', () => {
         },
         {
           provide: getQueueToken(BullMQName.JOB_RESULT),
-          useValue: { add: jest.fn() },
+          useValue: { add: mockFn() },
         },
         {
           provide: EventEmitter2,
-          useValue: { emit: jest.fn() },
+          useValue: { emit: mockFn() },
         },
         JobsRegistryService,
       ],
@@ -119,6 +131,70 @@ describe('JobsRegistryService', () => {
     service = module.get<JobsRegistryService>(JobsRegistryService);
     // Manually set optional toolsService since @Optional() dependencies may not be injected in tests
     (service as any).toolsService = mockToolsService;
+  });
+
+  describe('getScanActivity', () => {
+    it('should return workspace workers and recent scan logs', async () => {
+      mockDataSource.query
+        .mockResolvedValueOnce([
+          {
+            id: 'worker-uuid',
+            name: 'worker-1',
+            os: 'linux',
+            ipAddress: '127.0.0.1',
+            type: 'built_in',
+            scope: 'cloud',
+            lastSeenAt: new Date(),
+            currentJobsCount: '1',
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: 'job-uuid',
+            status: JobStatus.IN_PROGRESS,
+            createdAt: new Date('2026-06-05T10:00:00.000Z'),
+            updatedAt: new Date('2026-06-05T10:01:00.000Z'),
+            pickJobAt: new Date('2026-06-05T10:00:30.000Z'),
+            completedAt: null,
+            workerId: 'worker-uuid',
+            command: 'subfinder -d example.com',
+            jobRunType: 'manual',
+            targetId: 'target-uuid',
+            target: 'example.com',
+            asset: 'example.com',
+            tool: 'subfinder',
+            workerName: 'worker-1',
+            errorLogs: [],
+          },
+        ]);
+
+      const result = await service.getScanActivity('workspace-uuid');
+
+      expect(result).toMatchObject({
+        activeJobsCount: 1,
+        pendingJobsCount: 0,
+        workers: [
+          {
+            id: 'worker-uuid',
+            name: 'worker-1',
+            currentJobsCount: 1,
+            isOnline: true,
+          },
+        ],
+        logs: [
+          {
+            id: 'job-uuid',
+            status: JobStatus.IN_PROGRESS,
+            message: 'worker-1 is running subfinder on example.com',
+            target: 'example.com',
+            asset: 'example.com',
+            tool: 'subfinder',
+            workerId: 'worker-uuid',
+          },
+        ],
+      });
+      expect(mockDataSource.query).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('reRunJob', () => {
@@ -138,19 +214,19 @@ describe('JobsRegistryService', () => {
 
     it('should successfully re-run a job', async () => {
       const mockQueryRunner = {
-        connect: jest.fn(),
-        startTransaction: jest.fn(),
+        connect: mockFn(),
+        startTransaction: mockFn(),
         manager: {
-          save: jest.fn().mockResolvedValue({
+          save: mockFn().mockResolvedValue({
             ...mockJob,
             status: JobStatus.PENDING,
             workerId: undefined,
             retryCount: 1,
           }),
         },
-        commitTransaction: jest.fn(),
-        rollbackTransaction: jest.fn(),
-        release: jest.fn(),
+        commitTransaction: mockFn(),
+        rollbackTransaction: mockFn(),
+        release: mockFn(),
       };
 
       mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
@@ -175,17 +251,17 @@ describe('JobsRegistryService', () => {
 
     it('should throw NotFoundException when job not found in workspace', async () => {
       const mockQueryRunner = {
-        connect: jest.fn(),
-        startTransaction: jest.fn(),
+        connect: mockFn(),
+        startTransaction: mockFn(),
         manager: {
-          createQueryBuilder: jest.fn().mockReturnThis(),
-          innerJoin: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          andWhere: jest.fn().mockReturnThis(),
-          getOne: jest.fn().mockResolvedValue(null),
+          createQueryBuilder: mockFn().mockReturnThis(),
+          innerJoin: mockFn().mockReturnThis(),
+          where: mockFn().mockReturnThis(),
+          andWhere: mockFn().mockReturnThis(),
+          getOne: mockFn().mockResolvedValue(null),
         },
-        rollbackTransaction: jest.fn(),
-        release: jest.fn(),
+        rollbackTransaction: mockFn(),
+        release: mockFn(),
       };
 
       mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
@@ -203,13 +279,13 @@ describe('JobsRegistryService', () => {
 
     it('should rollback transaction when error occurs', async () => {
       const mockQueryRunner = {
-        connect: jest.fn(),
-        startTransaction: jest.fn(),
+        connect: mockFn(),
+        startTransaction: mockFn(),
         manager: {
-          save: jest.fn(),
+          save: mockFn(),
         },
-        rollbackTransaction: jest.fn(),
-        release: jest.fn(),
+        rollbackTransaction: mockFn(),
+        release: mockFn(),
       };
 
       mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
@@ -239,17 +315,17 @@ describe('JobsRegistryService', () => {
 
     it('should successfully cancel a job', async () => {
       const mockQueryRunner = {
-        connect: jest.fn(),
-        startTransaction: jest.fn(),
+        connect: mockFn(),
+        startTransaction: mockFn(),
         manager: {
-          save: jest.fn().mockResolvedValue({
+          save: mockFn().mockResolvedValue({
             ...mockJob,
             status: JobStatus.CANCELLED,
           }),
         },
-        commitTransaction: jest.fn(),
-        rollbackTransaction: jest.fn(),
-        release: jest.fn(),
+        commitTransaction: mockFn(),
+        rollbackTransaction: mockFn(),
+        release: mockFn(),
       };
 
       mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
@@ -272,17 +348,17 @@ describe('JobsRegistryService', () => {
 
     it('should throw NotFoundException when job not found in workspace', async () => {
       const mockQueryRunner = {
-        connect: jest.fn(),
-        startTransaction: jest.fn(),
+        connect: mockFn(),
+        startTransaction: mockFn(),
         manager: {
-          createQueryBuilder: jest.fn().mockReturnThis(),
-          innerJoin: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          andWhere: jest.fn().mockReturnThis(),
-          getOne: jest.fn().mockResolvedValue(null),
+          createQueryBuilder: mockFn().mockReturnThis(),
+          innerJoin: mockFn().mockReturnThis(),
+          where: mockFn().mockReturnThis(),
+          andWhere: mockFn().mockReturnThis(),
+          getOne: mockFn().mockResolvedValue(null),
         },
-        rollbackTransaction: jest.fn(),
-        release: jest.fn(),
+        rollbackTransaction: mockFn(),
+        release: mockFn(),
       };
 
       mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
@@ -300,17 +376,17 @@ describe('JobsRegistryService', () => {
 
     it('should rollback transaction when error occurs', async () => {
       const mockQueryRunner = {
-        connect: jest.fn(),
-        startTransaction: jest.fn(),
+        connect: mockFn(),
+        startTransaction: mockFn(),
         manager: {
-          createQueryBuilder: jest.fn().mockReturnThis(),
-          innerJoin: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          andWhere: jest.fn().mockReturnThis(),
-          getOne: jest.fn().mockRejectedValue(new Error('Database error')),
+          createQueryBuilder: mockFn().mockReturnThis(),
+          innerJoin: mockFn().mockReturnThis(),
+          where: mockFn().mockReturnThis(),
+          andWhere: mockFn().mockReturnThis(),
+          getOne: mockFn().mockRejectedValue(new Error('Database error')),
         },
-        rollbackTransaction: jest.fn(),
-        release: jest.fn(),
+        rollbackTransaction: mockFn(),
+        release: mockFn(),
       };
 
       mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
@@ -340,14 +416,14 @@ describe('JobsRegistryService', () => {
 
     it('should successfully delete a job', async () => {
       const mockQueryRunner = {
-        connect: jest.fn(),
-        startTransaction: jest.fn(),
+        connect: mockFn(),
+        startTransaction: mockFn(),
         manager: {
-          remove: jest.fn().mockResolvedValue(mockJob),
+          remove: mockFn().mockResolvedValue(mockJob),
         },
-        commitTransaction: jest.fn(),
-        rollbackTransaction: jest.fn(),
-        release: jest.fn(),
+        commitTransaction: mockFn(),
+        rollbackTransaction: mockFn(),
+        release: mockFn(),
       };
 
       mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
@@ -367,17 +443,17 @@ describe('JobsRegistryService', () => {
 
     it('should throw NotFoundException when job not found in workspace', async () => {
       const mockQueryRunner = {
-        connect: jest.fn(),
-        startTransaction: jest.fn(),
+        connect: mockFn(),
+        startTransaction: mockFn(),
         manager: {
-          createQueryBuilder: jest.fn().mockReturnThis(),
-          innerJoin: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          andWhere: jest.fn().mockReturnThis(),
-          getOne: jest.fn().mockResolvedValue(null),
+          createQueryBuilder: mockFn().mockReturnThis(),
+          innerJoin: mockFn().mockReturnThis(),
+          where: mockFn().mockReturnThis(),
+          andWhere: mockFn().mockReturnThis(),
+          getOne: mockFn().mockResolvedValue(null),
         },
-        rollbackTransaction: jest.fn(),
-        release: jest.fn(),
+        rollbackTransaction: mockFn(),
+        release: mockFn(),
       };
 
       mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
@@ -395,17 +471,17 @@ describe('JobsRegistryService', () => {
 
     it('should rollback transaction when error occurs', async () => {
       const mockQueryRunner = {
-        connect: jest.fn(),
-        startTransaction: jest.fn(),
+        connect: mockFn(),
+        startTransaction: mockFn(),
         manager: {
-          createQueryBuilder: jest.fn().mockReturnThis(),
-          innerJoin: jest.fn().mockReturnThis(),
-          where: jest.fn().mockReturnThis(),
-          andWhere: jest.fn().mockReturnThis(),
-          getOne: jest.fn().mockRejectedValue(new Error('Database error')),
+          createQueryBuilder: mockFn().mockReturnThis(),
+          innerJoin: mockFn().mockReturnThis(),
+          where: mockFn().mockReturnThis(),
+          andWhere: mockFn().mockReturnThis(),
+          getOne: mockFn().mockRejectedValue(new Error('Database error')),
         },
-        rollbackTransaction: jest.fn(),
-        release: jest.fn(),
+        rollbackTransaction: mockFn(),
+        release: mockFn(),
       };
 
       mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
@@ -445,10 +521,10 @@ describe('JobsRegistryService', () => {
     it('should return job history detail with jobs', async () => {
       mockJobHistoryRepository.findOne.mockResolvedValue(mockJobHistory);
       mockJobHistoryRepository.createQueryBuilder.mockReturnValue({
-        innerJoin: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        getExists: jest.fn().mockResolvedValue(true),
+        innerJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        getExists: mockFn().mockResolvedValue(true),
       });
       mockToolsService.getInstalledTools.mockResolvedValue({
         data: [{ name: 'test-tool' }],
@@ -493,10 +569,10 @@ describe('JobsRegistryService', () => {
     it('should throw NotFoundException when job history not in workspace', async () => {
       mockJobHistoryRepository.findOne.mockResolvedValue(mockJobHistory);
       mockJobHistoryRepository.createQueryBuilder.mockReturnValue({
-        innerJoin: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        getExists: jest.fn().mockResolvedValue(false),
+        innerJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        getExists: mockFn().mockResolvedValue(false),
       });
 
       await expect(
@@ -580,14 +656,14 @@ describe('JobsRegistryService', () => {
       ]);
 
       const mockQueryBuilder = {
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue([{ id: 'asset-1', isPrimary: true }]),
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        getMany: mockFn().mockResolvedValue([{ id: 'asset-1', isPrimary: true }]),
       };
       const mockJobRepo = {
-        create: jest.fn().mockReturnValue({}),
-        save: jest.fn().mockResolvedValue([{}]),
-        createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
+        create: mockFn().mockReturnValue({}),
+        save: mockFn().mockResolvedValue([{}]),
+        createQueryBuilder: mockFn().mockReturnValue(mockQueryBuilder),
       };
       mockDataSource.getRepository.mockReturnValue(mockJobRepo);
 

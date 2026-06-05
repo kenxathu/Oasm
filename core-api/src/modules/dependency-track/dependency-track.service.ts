@@ -8,7 +8,6 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { AxiosResponse } from 'axios';
-import { Buffer } from 'buffer';
 import { CronJob } from 'cron';
 import { firstValueFrom } from 'rxjs';
 import { DependencyTrackCheckResponseDto } from './dtos/dependency-track-check-response.dto';
@@ -23,12 +22,14 @@ import { DependencyTrackVulnerabilityDto } from './dtos/dependency-track-vulnera
 export class DependencyTrackService implements OnModuleInit {
   private static readonly DEFAULT_SYNC_CRON = '0 */30 * * * *';
   private static readonly DASHBOARD_VULNERABILITY_LIMIT = 20;
+  private static readonly DEFAULT_BOM_PROCESSING_TIMEOUT_MS = 30000;
+  private static readonly DEFAULT_BOM_PROCESSING_POLL_INTERVAL_MS = 1000;
   private readonly logger = new Logger(DependencyTrackService.name);
   private readonly baseUrl: string;
   private readonly apiKey?: string;
-  private readonly username?: string;
-  private readonly password?: string;
   private readonly syncCron: string;
+  private readonly bomProcessingTimeoutMs: number;
+  private readonly bomProcessingPollIntervalMs: number;
   private readonly projectUuid?: string;
   private readonly projectName?: string;
   private readonly projectVersion?: string;
@@ -42,11 +43,17 @@ export class DependencyTrackService implements OnModuleInit {
     this.baseUrl =
       this.configService.get<string>('DEPENDENCY_TRACK_BASE_URL') || '';
     this.apiKey = this.configService.get<string>('DEPENDENCY_TRACK_API_KEY');
-    this.username = this.configService.get<string>('DEPENDENCY_TRACK_USERNAME');
-    this.password = this.configService.get<string>('DEPENDENCY_TRACK_PASSWORD');
     this.syncCron =
       this.configService.get<string>('DEPENDENCY_TRACK_SYNC_CRON') ||
       DependencyTrackService.DEFAULT_SYNC_CRON;
+    this.bomProcessingTimeoutMs = this.getConfigNumber(
+      'DEPENDENCY_TRACK_BOM_PROCESSING_TIMEOUT_MS',
+      DependencyTrackService.DEFAULT_BOM_PROCESSING_TIMEOUT_MS,
+    );
+    this.bomProcessingPollIntervalMs = this.getConfigNumber(
+      'DEPENDENCY_TRACK_BOM_PROCESSING_POLL_INTERVAL_MS',
+      DependencyTrackService.DEFAULT_BOM_PROCESSING_POLL_INTERVAL_MS,
+    );
     this.projectUuid = this.configService.get<string>(
       'DEPENDENCY_TRACK_PROJECT_UUID',
     );
@@ -64,9 +71,9 @@ export class DependencyTrackService implements OnModuleInit {
       throw new Error('DEPENDENCY_TRACK_BASE_URL is not configured');
     }
 
-    if (!this.apiKey && !(this.username && this.password)) {
+    if (!this.apiKey) {
       throw new Error(
-        'Dependency Track authentication is not configured. Set DEPENDENCY_TRACK_API_KEY or DEPENDENCY_TRACK_USERNAME and DEPENDENCY_TRACK_PASSWORD.',
+        'Dependency Track authentication is not configured. Set DEPENDENCY_TRACK_API_KEY.',
       );
     }
 
@@ -74,19 +81,18 @@ export class DependencyTrackService implements OnModuleInit {
     this.httpService.axiosRef.defaults.headers.common.Accept =
       'application/json';
 
-    if (this.apiKey) {
-      this.httpService.axiosRef.defaults.headers.common['X-Api-Key'] =
-        this.apiKey;
-    } else {
-      const token = Buffer.from(
-        `${this.username}:${this.password}`,
-        'utf-8',
-      ).toString('base64');
-      this.httpService.axiosRef.defaults.headers.common.Authorization =
-        `Basic ${token}`;
-    }
+    this.httpService.axiosRef.defaults.headers.common['X-Api-Key'] =
+      this.apiKey;
 
-    void this.testConnection();
+    void this.testConnection().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.dashboardCache = {
+        ...this.dashboardCache,
+        status: 'error',
+        message: 'Dependency-Track connection failed.',
+        lastError: message,
+      };
+    });
   }
 
   onModuleInit(): void {
@@ -104,7 +110,14 @@ export class DependencyTrackService implements OnModuleInit {
 
   async testConnection(): Promise<void> {
     try {
-      await firstValueFrom(this.httpService.get('/api/v1/system/health'));
+      await firstValueFrom(
+        this.httpService.get('/api/v1/project', {
+          params: {
+            excludeInactive: true,
+            onlyRoot: false,
+          },
+        }),
+      );
       this.logger.log('Dependency Track connection established successfully');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -126,40 +139,17 @@ export class DependencyTrackService implements OnModuleInit {
         }),
       );
 
+      const rawContentType = sbomResponse.headers['content-type'];
       const contentType =
-        sbomResponse.headers['content-type'] || 'application/json';
+        typeof rawContentType === 'string' ? rawContentType : 'application/json';
       const isJson =
         String(contentType).includes('json') || sbomUrl.endsWith('.json');
 
-      const uploadResponse: AxiosResponse<DependencyTrackUploadResponse> =
-        await firstValueFrom(
-          this.httpService.post(
-            '/api/v1/bom?autoCreate=true',
-            sbomResponse.data,
-            {
-              headers: {
-                'Content-Type': isJson
-                  ? 'application/json'
-                  : 'application/xml',
-              },
-            },
-          ),
-        );
-
-      const projectUuid =
-        uploadResponse.data?.project?.uuid || uploadResponse.data?.project?.id;
-      const rawVulnerabilities =
-        uploadResponse.data?.vulnerabilities ||
-        uploadResponse.data?.findings ||
-        [];
-
-      const vulnerabilities = this.mapVulnerabilities(rawVulnerabilities);
-
-      return {
-        projectUuid,
-        message: 'SBOM imported successfully into Dependency Track.',
-        vulnerabilities,
-      };
+      return await this.uploadSbomContent(
+        sbomResponse.data,
+        isJson ? 'application/json' : 'application/xml',
+        this.getFileNameFromUrl(sbomUrl) ?? 'sbom.json',
+      );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
@@ -168,6 +158,43 @@ export class DependencyTrackService implements OnModuleInit {
       );
       throw new BadRequestException(
         `Failed to scan SBOM with Dependency Track: ${message}`,
+      );
+    }
+  }
+
+  async checkSbomFileVulnerabilities(
+    file?: Express.Multer.File,
+  ): Promise<DependencyTrackCheckResponseDto> {
+    if (!file) {
+      throw new BadRequestException('SBOM file is required');
+    }
+
+    const isJsonFile = file.originalname.toLowerCase().endsWith('.json');
+    if (!isJsonFile) {
+      throw new BadRequestException('Only .json SBOM files are supported');
+    }
+
+    const sbomContent = file.buffer.toString('utf-8');
+    try {
+      JSON.parse(sbomContent);
+    } catch {
+      throw new BadRequestException('SBOM file must contain valid JSON');
+    }
+
+    try {
+      return await this.uploadSbomContent(
+        sbomContent,
+        'application/json',
+        file.originalname,
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Dependency Track SBOM file scan failed: ${message}`,
+        error as Error,
+      );
+      throw new BadRequestException(
+        `Failed to scan SBOM file with Dependency Track: ${message}`,
       );
     }
   }
@@ -302,6 +329,244 @@ export class DependencyTrackService implements OnModuleInit {
     }
   }
 
+  private async uploadSbomContent(
+    content: string,
+    contentType: 'application/json' | 'application/xml',
+    fileName: string,
+  ): Promise<DependencyTrackCheckResponseDto> {
+    const formData = new FormData();
+    const projectFields = this.resolveBomProjectFields(content, fileName);
+    const uploadContent =
+      contentType === 'application/json'
+        ? this.normalizeCycloneDxBomContent(content)
+        : content;
+
+    if (this.projectUuid) {
+      formData.append('project', this.projectUuid);
+    } else {
+      formData.append('autoCreate', 'true');
+      formData.append('projectName', projectFields.projectName);
+      formData.append('projectVersion', projectFields.projectVersion);
+    }
+
+    formData.append(
+      'bom',
+      new Blob([uploadContent], { type: contentType }),
+      fileName,
+    );
+
+    const uploadResponse: AxiosResponse<DependencyTrackUploadResponse> =
+      await firstValueFrom(
+        this.httpService.post('/api/v1/bom', formData, {
+          maxBodyLength: Infinity,
+        }),
+      );
+
+    const projectUuid =
+      uploadResponse.data?.project?.uuid || uploadResponse.data?.project?.id;
+    const uploadToken = uploadResponse.data?.token;
+    const rawVulnerabilities =
+      uploadResponse.data?.vulnerabilities ||
+      uploadResponse.data?.findings ||
+      [];
+
+    const resolvedProjectUuid =
+      projectUuid ||
+      (await this.resolveUploadedProjectUuid(projectFields).catch(
+        () => undefined,
+      ));
+    const processed =
+      uploadToken && resolvedProjectUuid
+        ? await this.waitForBomProcessing(uploadToken).catch(() => false)
+        : false;
+    const resolvedRawVulnerabilities =
+      rawVulnerabilities.length > 0
+        ? rawVulnerabilities
+        : processed && resolvedProjectUuid
+          ? await this.fetchProjectFindings(resolvedProjectUuid).catch(() => [])
+          : [];
+    const vulnerabilities = this.mapVulnerabilities(resolvedRawVulnerabilities);
+
+    return {
+      projectUuid: resolvedProjectUuid,
+      message: 'SBOM imported successfully into Dependency Track.',
+      vulnerabilities,
+    };
+  }
+
+  private normalizeCycloneDxBomContent(content: string): string {
+    const parsed = JSON.parse(content) as CycloneDxBom;
+    if (parsed.bomFormat !== 'CycloneDX' || !Array.isArray(parsed.dependencies)) {
+      return content;
+    }
+
+    const dependenciesByRef = new Map<string, CycloneDxDependency>();
+    const dependenciesWithoutRef: unknown[] = [];
+
+    for (const dependency of parsed.dependencies) {
+      if (!this.isCycloneDxDependency(dependency)) {
+        dependenciesWithoutRef.push(dependency);
+        continue;
+      }
+
+      const existing = dependenciesByRef.get(dependency.ref);
+      if (!existing) {
+        dependenciesByRef.set(dependency.ref, {
+          ...dependency,
+          dependsOn: this.getUniqueStrings(dependency.dependsOn),
+        });
+        continue;
+      }
+
+      dependenciesByRef.set(dependency.ref, {
+        ...existing,
+        dependsOn: this.getUniqueStrings([
+          ...(existing.dependsOn ?? []),
+          ...(dependency.dependsOn ?? []),
+        ]),
+      });
+    }
+
+    return JSON.stringify({
+      ...parsed,
+      dependencies: [
+        ...Array.from(dependenciesByRef.values()),
+        ...dependenciesWithoutRef,
+      ],
+    });
+  }
+
+  private isCycloneDxDependency(
+    value: unknown,
+  ): value is CycloneDxDependency {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+
+    const dependency = value as { ref?: unknown; dependsOn?: unknown };
+    return (
+      typeof dependency.ref === 'string' &&
+      (dependency.dependsOn === undefined ||
+        (Array.isArray(dependency.dependsOn) &&
+          dependency.dependsOn.every((item) => typeof item === 'string')))
+    );
+  }
+
+  private getUniqueStrings(values: string[] | undefined): string[] | undefined {
+    if (!values) {
+      return undefined;
+    }
+
+    return Array.from(new Set(values));
+  }
+
+  private async resolveUploadedProjectUuid({
+    projectName,
+    projectVersion,
+  }: {
+    projectName: string;
+    projectVersion: string;
+  }): Promise<string | undefined> {
+    const response = await firstValueFrom(
+      this.httpService.get<DependencyTrackProject>('/api/v1/project/lookup', {
+        params: {
+          name: projectName,
+          version: projectVersion,
+        },
+      }),
+    );
+    return response.data?.uuid;
+  }
+
+  private async waitForBomProcessing(token: string): Promise<boolean> {
+    const deadline = Date.now() + this.bomProcessingTimeoutMs;
+
+    while (Date.now() <= deadline) {
+      const response = await firstValueFrom(
+        this.httpService.get<DependencyTrackProcessingResponse>(
+          `/api/v1/event/token/${token}`,
+        ),
+      );
+
+      if (!response.data?.processing) {
+        return true;
+      }
+
+      await this.sleep(this.bomProcessingPollIntervalMs);
+    }
+
+    return false;
+  }
+
+  private sleep(durationMs: number): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(resolve, durationMs);
+    });
+  }
+
+  private getFileNameFromUrl(url: string): string | null {
+    try {
+      const { pathname } = new URL(url);
+      const fileName = pathname.split('/').filter(Boolean).at(-1);
+      return fileName || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private getConfigNumber(key: string, fallback: number): number {
+    const rawValue = this.configService.get<string>(key);
+    if (!rawValue) {
+      return fallback;
+    }
+
+    const value = Number(rawValue);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  private resolveBomProjectFields(
+    content: string,
+    fileName: string,
+  ): { projectName: string; projectVersion: string } {
+    const fallbackProjectName =
+      fileName.replace(/\.(cdx|spdx)?\.?json$/i, '') || 'Uploaded SBOM';
+    const configuredProjectName = this.projectName?.trim();
+    const configuredProjectVersion = this.projectVersion?.trim();
+
+    if (configuredProjectName && configuredProjectVersion) {
+      return {
+        projectName: configuredProjectName,
+        projectVersion: configuredProjectVersion,
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(content) as {
+        metadata?: {
+          component?: {
+            name?: string;
+            version?: string;
+          };
+        };
+      };
+      return {
+        projectName:
+          configuredProjectName ||
+          parsed.metadata?.component?.name ||
+          fallbackProjectName,
+        projectVersion:
+          configuredProjectVersion ||
+          parsed.metadata?.component?.version ||
+          'latest',
+      };
+    } catch {
+      return {
+        projectName: configuredProjectName || fallbackProjectName,
+        projectVersion: configuredProjectVersion || 'latest',
+      };
+    }
+  }
+
   private createEmptyDashboard(message: string): DependencyTrackDashboardDto {
     return {
       status: 'pending',
@@ -408,8 +673,25 @@ type DependencyTrackUploadResponse = {
     uuid?: string;
     id?: string;
   };
+  token?: string;
   vulnerabilities?: unknown[];
   findings?: unknown[];
+};
+
+type DependencyTrackProcessingResponse = {
+  processing?: boolean;
+};
+
+type CycloneDxBom = {
+  bomFormat?: string;
+  dependencies?: unknown[];
+  [key: string]: unknown;
+};
+
+type CycloneDxDependency = {
+  ref: string;
+  dependsOn?: string[];
+  [key: string]: unknown;
 };
 
 type DependencyTrackProject = {

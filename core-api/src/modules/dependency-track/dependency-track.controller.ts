@@ -1,5 +1,13 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { CheckSbomDto } from './dtos/check-sbom.dto';
 import { DependencyTrackCheckResponseDto } from './dtos/dependency-track-check-response.dto';
 import { DependencyTrackDashboardDto } from './dtos/dependency-track-dashboard.dto';
@@ -21,19 +29,41 @@ export class DependencyTrackController {
   }
 
   @Get('dashboard')
-  async getDashboard(): Promise<DependencyTrackDashboardDto> {
+  getDashboard(): DependencyTrackDashboardDto {
     return this.dependencyTrackService.getDashboardSummary();
   }
 
   @Post('dashboard/sync')
-  async syncDashboard(): Promise<DependencyTrackDashboardDto> {
+  syncDashboard(): Promise<DependencyTrackDashboardDto> {
     return this.dependencyTrackService.syncDashboardVulnerabilities();
   }
 
   @Post('sbom')
-  async checkSbom(
+  checkSbom(
     @Body() dto: CheckSbomDto,
   ): Promise<DependencyTrackCheckResponseDto> {
     return this.dependencyTrackService.checkSbomVulnerabilities(dto.sbomUrl);
+  }
+
+  @Post('sbom/file')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'A JSON SBOM file such as sbom.json.',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  checkSbomFile(
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<DependencyTrackCheckResponseDto> {
+    return this.dependencyTrackService.checkSbomFileVulnerabilities(file);
   }
 }
