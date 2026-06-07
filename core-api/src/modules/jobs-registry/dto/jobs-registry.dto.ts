@@ -9,7 +9,16 @@ import { Vulnerability } from '@/modules/vulnerabilities/entities/vulnerability.
 import { Workflow } from '@/modules/workflows/entities/workflow.entity';
 import { ApiProperty, PickType } from '@nestjs/swagger';
 import { Expose, Transform, Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsObject, IsOptional, IsUUID } from 'class-validator';
+import {
+  ArrayUnique,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import { JobHistory } from '../entities/job-history.entity';
 import { Job } from '../entities/job.entity';
 
@@ -173,6 +182,17 @@ export class CreateJobsDto {
   @ApiProperty()
   @IsUUID()
   targetId: string;
+}
+
+export class UpdateJobHistoryPipelineDto {
+  @ApiProperty({
+    description: 'Ordered tool names to keep in this job history pipeline.',
+    type: [String],
+  })
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  toolNames: string[];
 }
 
 export class CreateJobs extends PickType(Job, [

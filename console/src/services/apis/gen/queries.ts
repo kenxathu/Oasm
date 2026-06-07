@@ -651,6 +651,10 @@ export type JobHistoryResponseDto = {
   workflowName: string;
   jobHistoryName: string;
   jobRunType: JobHistoryResponseDtoJobRunType;
+  targetId?: string;
+  targetValue?: string;
+  targetType?: string;
+  targetCount?: number;
 };
 
 export type GetManyJobHistoryResponseDtoDto = {

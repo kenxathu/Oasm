@@ -1,4 +1,11 @@
-import { BullMQName, JobStatus } from '@/common/enums/enum';
+import { SortOrder } from '@/common/dtos/get-many-base.dto';
+import {
+  BullMQName,
+  JobStatus,
+  ToolCategory,
+  WorkerScope,
+  WorkerType,
+} from '@/common/enums/enum';
 import { RedisService } from '@/services/redis/redis.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { NotFoundException } from '@nestjs/common';
@@ -11,6 +18,7 @@ import { DataSource } from 'typeorm';
 import { DataAdapterService } from '../data-adapter/data-adapter.service';
 import { StorageService } from '../storage/storage.service';
 import { ToolsService } from '../tools/tools.service';
+import { WorkerInstance } from '../workers/entities/worker.entity';
 import { JobErrorLog } from './entities/job-error-log.entity';
 import { JobHistory } from './entities/job-history.entity';
 import { Job } from './entities/job.entity';
@@ -37,6 +45,7 @@ describe('JobsRegistryService', () => {
     getOne: mockFn(),
     findOne: mockFn(),
     save: mockFn(),
+    update: mockFn(),
     count: mockFn(),
     exists: mockFn(),
   };
@@ -44,6 +53,7 @@ describe('JobsRegistryService', () => {
   const mockJobHistoryRepository = {
     createQueryBuilder: mockFn(),
     findOne: mockFn(),
+    save: mockFn(),
     update: mockFn(),
   };
 
@@ -194,6 +204,160 @@ describe('JobsRegistryService', () => {
         ],
       });
       expect(mockDataSource.query).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('getManyJobHistories', () => {
+    it('should return job histories with target metadata', async () => {
+      const now = new Date('2026-06-05T10:00:00.000Z');
+      const listQueryBuilder = {
+        innerJoin: mockFn().mockReturnThis(),
+        leftJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        select: mockFn().mockReturnThis(),
+        groupBy: mockFn().mockReturnThis(),
+        addGroupBy: mockFn().mockReturnThis(),
+        orderBy: mockFn().mockReturnThis(),
+        offset: mockFn().mockReturnThis(),
+        limit: mockFn().mockReturnThis(),
+        getRawMany: mockFn().mockResolvedValue([
+          {
+            id: 'history-uuid',
+            createdAt: now,
+            updatedAt: now,
+            totalJobs: '3',
+            status: JobStatus.FAILED,
+            workflowName: 'domain_discovery',
+            jobHistoryName: 'domain_discovery - example.com',
+            jobRunType: 'manual',
+            targetId: 'target-uuid',
+            targetValue: 'example.com',
+            targetType: 'DOMAIN',
+            targetCount: '1',
+          },
+        ]),
+      };
+      const countQueryBuilder = {
+        innerJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        getCount: mockFn().mockResolvedValue(1),
+      };
+
+      mockJobHistoryRepository.createQueryBuilder
+        .mockReturnValueOnce(listQueryBuilder)
+        .mockReturnValueOnce(countQueryBuilder);
+
+      const result = await service.getManyJobHistories('workspace-uuid', {
+        page: 1,
+        limit: 10,
+        sortBy: 'createdAt',
+        sortOrder: SortOrder.DESC,
+      });
+
+      expect(result.data).toEqual([
+        {
+          id: 'history-uuid',
+          createdAt: now,
+          updatedAt: now,
+          totalJobs: 3,
+          status: JobStatus.FAILED,
+          workflowName: 'domain_discovery',
+          jobHistoryName: 'domain_discovery - example.com',
+          jobRunType: 'manual',
+          targetId: 'target-uuid',
+          targetValue: 'example.com',
+          targetType: 'DOMAIN',
+          targetCount: 1,
+        },
+      ]);
+    });
+  });
+
+  describe('getNextJob', () => {
+    it('should only dispatch provider worker jobs for workspaces where the tool is installed and enabled', async () => {
+      const now = new Date('2026-06-05T10:00:00.000Z');
+      const worker = {
+        id: 'worker-uuid',
+        type: WorkerType.PROVIDER,
+        scope: WorkerScope.CLOUD,
+        tool: {
+          id: 'tool-nessus',
+          category: ToolCategory.VULNERABILITIES,
+        },
+      };
+      const job = {
+        id: 'job-uuid',
+        category: ToolCategory.VULNERABILITIES,
+        createdAt: now,
+        updatedAt: now,
+        priority: 4,
+        command: 'nessus -q example.com',
+        asset: { id: 'asset-uuid' },
+      };
+      const workerRepository = {
+        findOne: mockFn().mockResolvedValue(worker),
+      };
+      const queryBuilder = {
+        innerJoinAndSelect: mockFn().mockReturnThis(),
+        innerJoin: mockFn().mockReturnThis(),
+        leftJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        orderBy: mockFn().mockReturnThis(),
+        addOrderBy: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        leftJoinAndSelect: mockFn().mockReturnThis(),
+        setLock: mockFn().mockReturnThis(),
+        limit: mockFn().mockReturnThis(),
+        getOne: mockFn().mockResolvedValue(job),
+      };
+      const mockQueryRunner = {
+        connect: mockFn(),
+        startTransaction: mockFn(),
+        manager: {
+          createQueryBuilder: mockFn().mockReturnValue(queryBuilder),
+          update: mockFn().mockResolvedValue({ affected: 1 }),
+        },
+        commitTransaction: mockFn(),
+        rollbackTransaction: mockFn(),
+        release: mockFn(),
+      };
+
+      mockDataSource.getRepository.mockReturnValue(workerRepository);
+      mockDataSource.createQueryRunner.mockReturnValue(mockQueryRunner);
+
+      const result = await service.getNextJob('worker-uuid');
+
+      expect(mockDataSource.getRepository).toHaveBeenCalledWith(
+        WorkerInstance,
+      );
+      expect(queryBuilder.leftJoin).toHaveBeenCalledWith(
+        'target.workspaceTargets',
+        'workspace_targets',
+      );
+      expect(queryBuilder.leftJoin).toHaveBeenCalledWith(
+        'workspace_targets.workspace',
+        'workspaces',
+      );
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'tool.id = :toolId',
+        { toolId: 'tool-nessus' },
+      );
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('workspace_tools'),
+        { toolId: 'tool-nessus' },
+      );
+      expect(mockQueryRunner.manager.update).toHaveBeenCalledWith(
+        Job,
+        'job-uuid',
+        expect.objectContaining({
+          workerId: 'worker-uuid',
+          status: JobStatus.IN_PROGRESS,
+        }),
+      );
+      expect(result).toMatchObject({
+        id: 'job-uuid',
+        category: ToolCategory.VULNERABILITIES,
+      });
     });
   });
 
@@ -494,6 +658,76 @@ describe('JobsRegistryService', () => {
     });
   });
 
+  describe('scan history controls', () => {
+    const mockWorkspaceId = 'workspace-uuid';
+    const mockHistoryId = 'history-uuid';
+
+    beforeEach(() => {
+      mockJobHistoryRepository.createQueryBuilder.mockReturnValue({
+        innerJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        getExists: mockFn().mockResolvedValue(true),
+      });
+    });
+
+    it('should stop a scan history by cancelling active and pending jobs', async () => {
+      mockJobRepository.update.mockResolvedValue({ affected: 3 });
+
+      const result = await service.stopJobHistory(
+        mockWorkspaceId,
+        mockHistoryId,
+      );
+
+      expect(mockJobRepository.update).toHaveBeenCalledWith(
+        {
+          jobHistory: { id: mockHistoryId },
+          status: expect.anything(),
+        },
+        {
+          status: JobStatus.CANCELLED,
+          workerId: undefined,
+        },
+      );
+      expect(result).toEqual({ message: 'Scan stopped successfully' });
+    });
+
+    it('should start a scan history by moving cancelled and failed jobs back to pending', async () => {
+      mockJobRepository.update.mockResolvedValue({ affected: 2 });
+
+      const result = await service.startJobHistory(
+        mockWorkspaceId,
+        mockHistoryId,
+      );
+
+      expect(mockJobRepository.update).toHaveBeenCalledWith(
+        {
+          jobHistory: { id: mockHistoryId },
+          status: expect.anything(),
+        },
+        {
+          status: JobStatus.PENDING,
+          workerId: undefined,
+          retryCount: expect.any(Function),
+        },
+      );
+      expect(result).toEqual({ message: 'Scan started successfully' });
+    });
+
+    it('should throw NotFoundException when stopping a scan history outside the workspace', async () => {
+      mockJobHistoryRepository.createQueryBuilder.mockReturnValue({
+        innerJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        getExists: mockFn().mockResolvedValue(false),
+      });
+
+      await expect(
+        service.stopJobHistory(mockWorkspaceId, mockHistoryId),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('getJobHistoryDetail', () => {
     const mockWorkspaceId = 'workspace-uuid';
     const mockHistoryId = 'history-uuid';
@@ -527,7 +761,12 @@ describe('JobsRegistryService', () => {
         getExists: mockFn().mockResolvedValue(true),
       });
       mockToolsService.getInstalledTools.mockResolvedValue({
-        data: [{ name: 'test-tool' }],
+        data: [
+          { name: 'subfinder' },
+          { name: 'naabu' },
+          { name: 'httpx' },
+          { name: 'test-tool' },
+        ],
       });
 
       const result = await service.getJobHistoryDetail(
@@ -553,7 +792,13 @@ describe('JobsRegistryService', () => {
         jobHistoryName: 'test-job-history',
         createdAt: mockJobHistory.createdAt,
         updatedAt: mockJobHistory.updatedAt,
-        tools: [{ name: 'test-tool' }],
+        tools: [
+          { name: 'subfinder' },
+          { name: 'naabu' },
+          { name: 'httpx' },
+          { name: 'test-tool' },
+        ],
+        pipelineToolNames: ['subfinder', 'naabu', 'httpx', 'test-tool'],
         jobs: mockJobs,
       });
     });
@@ -577,6 +822,185 @@ describe('JobsRegistryService', () => {
 
       await expect(
         service.getJobHistoryDetail(mockWorkspaceId, mockHistoryId),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateJobHistoryPipeline', () => {
+    const mockWorkspaceId = 'workspace-uuid';
+    const mockHistoryId = 'history-uuid';
+    const mockWorkflow = {
+      id: 'workflow-uuid',
+      name: 'Pipeline workflow',
+      content: {
+        name: 'Pipeline workflow',
+        on: {
+          target: [],
+        },
+        jobs: [
+          { name: 'subfinder', run: 'subfinder' },
+          { name: 'nuclei', run: 'nuclei' },
+        ],
+      },
+    };
+    const mockJobHistory = {
+      id: mockHistoryId,
+      workflow: mockWorkflow,
+    };
+    const mockWorkflowRepository = {
+      save: mockFn(),
+    };
+
+    beforeEach(() => {
+      mockWorkflow.content.jobs = [
+        { name: 'subfinder', run: 'subfinder' },
+        { name: 'nuclei', run: 'nuclei' },
+      ];
+      mockJobHistoryRepository.findOne.mockResolvedValue(mockJobHistory);
+      mockJobHistoryRepository.createQueryBuilder.mockReturnValue({
+        innerJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        getExists: mockFn().mockResolvedValue(true),
+      });
+      mockToolsService.getInstalledTools.mockResolvedValue({
+        data: [
+          { id: 'tool-subfinder', name: 'subfinder' },
+          { id: 'tool-naabu', name: 'naabu' },
+          { id: 'tool-httpx', name: 'httpx' },
+          { id: 'tool-nmap', name: 'nmap' },
+          { id: 'tool-nessus', name: 'nessus' },
+        ],
+      });
+      mockDataSource.getRepository.mockReturnValue(mockWorkflowRepository);
+      mockWorkflowRepository.save.mockResolvedValue(mockWorkflow);
+      mockJobRepository.update.mockResolvedValue({ affected: 1 });
+    });
+
+    it('should keep default pipeline tools when replacing with requested installed tools', async () => {
+      const result = await service.updateJobHistoryPipeline(
+        mockWorkspaceId,
+        mockHistoryId,
+        { toolNames: ['subfinder', 'httpx'] },
+      );
+
+      expect(mockJobHistoryRepository.findOne).toHaveBeenCalledWith({
+        where: { id: mockHistoryId },
+        relations: {
+          workflow: true,
+        },
+      });
+      expect(mockJobHistory.workflow.content.jobs).toEqual([
+        { name: 'subfinder', run: 'subfinder' },
+        { name: 'naabu', run: 'naabu' },
+        { name: 'httpx', run: 'httpx' },
+      ]);
+      expect(mockWorkflowRepository.save).toHaveBeenCalledWith(mockWorkflow);
+      expect(result).toEqual({ message: 'Pipeline updated successfully' });
+    });
+
+    it('should cancel pending and active jobs for tools removed from the pipeline', async () => {
+      await service.updateJobHistoryPipeline(mockWorkspaceId, mockHistoryId, {
+        toolNames: ['subfinder'],
+      });
+
+      expect(mockJobRepository.update).toHaveBeenCalledWith(
+        {
+          jobHistory: { id: mockHistoryId },
+          tool: { name: expect.anything() },
+          status: expect.anything(),
+        },
+        {
+          status: JobStatus.CANCELLED,
+          workerId: undefined,
+        },
+      );
+    });
+
+    it('should not remove default pipeline tools when they are omitted from the request', async () => {
+      const result = await service.updateJobHistoryPipeline(
+        mockWorkspaceId,
+        mockHistoryId,
+        { toolNames: [] },
+      );
+
+      expect(mockJobHistory.workflow.content.jobs).toEqual([
+        { name: 'subfinder', run: 'subfinder' },
+        { name: 'naabu', run: 'naabu' },
+        { name: 'httpx', run: 'httpx' },
+      ]);
+      expect(result).toEqual({ message: 'Pipeline updated successfully' });
+    });
+
+    it('should allow removing non-default tools when another existing pipeline tool is no longer installed', async () => {
+      mockWorkflow.content.jobs = [
+        { name: 'subfinder', run: 'subfinder' },
+        { name: 'legacy-tool', run: 'legacy-tool' },
+        { name: 'nuclei', run: 'nuclei' },
+      ];
+
+      const result = await service.updateJobHistoryPipeline(
+        mockWorkspaceId,
+        mockHistoryId,
+        { toolNames: ['legacy-tool', 'nuclei'] },
+      );
+
+      expect(mockJobHistory.workflow.content.jobs).toEqual([
+        { name: 'subfinder', run: 'subfinder' },
+        { name: 'naabu', run: 'naabu' },
+        { name: 'httpx', run: 'httpx' },
+        { name: 'legacy-tool', run: 'legacy-tool' },
+        { name: 'nuclei', run: 'nuclei' },
+      ]);
+      expect(mockWorkflowRepository.save).toHaveBeenCalledWith(mockWorkflow);
+      expect(result).toEqual({ message: 'Pipeline updated successfully' });
+    });
+
+    it('should allow adding an installed tool when an existing pipeline tool is no longer installed', async () => {
+      mockWorkflow.content.jobs = [
+        { name: 'subfinder', run: 'subfinder' },
+        { name: 'legacy-tool', run: 'legacy-tool' },
+      ];
+
+      const result = await service.updateJobHistoryPipeline(
+        mockWorkspaceId,
+        mockHistoryId,
+        { toolNames: ['subfinder', 'legacy-tool', 'httpx'] },
+      );
+
+      expect(mockJobHistory.workflow.content.jobs).toEqual([
+        { name: 'subfinder', run: 'subfinder' },
+        { name: 'naabu', run: 'naabu' },
+        { name: 'httpx', run: 'httpx' },
+        { name: 'legacy-tool', run: 'legacy-tool' },
+      ]);
+      expect(mockWorkflowRepository.save).toHaveBeenCalledWith(mockWorkflow);
+      expect(result).toEqual({ message: 'Pipeline updated successfully' });
+    });
+
+    it('should update a custom nmap and nessus pipeline', async () => {
+      const result = await service.updateJobHistoryPipeline(
+        mockWorkspaceId,
+        mockHistoryId,
+        { toolNames: ['nmap', 'nessus'] },
+      );
+
+      expect(mockJobHistory.workflow.content.jobs).toEqual([
+        { name: 'subfinder', run: 'subfinder' },
+        { name: 'naabu', run: 'naabu' },
+        { name: 'httpx', run: 'httpx' },
+        { name: 'nmap', run: 'nmap' },
+        { name: 'nessus', run: 'nessus' },
+      ]);
+      expect(mockWorkflowRepository.save).toHaveBeenCalledWith(mockWorkflow);
+      expect(result).toEqual({ message: 'Pipeline updated successfully' });
+    });
+
+    it('should reject tools that are not installed in the workspace', async () => {
+      await expect(
+        service.updateJobHistoryPipeline(mockWorkspaceId, mockHistoryId, {
+          toolNames: ['subfinder', 'missing-tool'],
+        }),
       ).rejects.toThrow(NotFoundException);
     });
   });

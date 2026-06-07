@@ -131,7 +131,7 @@ func Start(ctx context.Context, cfg *config.Config) {
 		case semaphore <- struct{}{}:
 			wg.Go(func() {
 				defer func() { <-semaphore }()
-				processJob(currentCtx, client, browser, toolPath)
+				processJob(currentCtx, client, browser, toolPath, cfg.JobTimeoutSeconds)
 			})
 		default:
 		}

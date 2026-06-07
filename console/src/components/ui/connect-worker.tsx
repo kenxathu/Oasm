@@ -9,18 +9,38 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useWorkspaceState } from '@/hooks/useWorkspaceSelector';
 import {
   useWorkspacesControllerGetWorkspaceApiKey,
   useWorkspacesControllerRotateApiKey,
 } from '@/services/apis/gen/queries';
-import { Copy, SquareTerminal } from 'lucide-react';
-import { useState } from 'react';
+import { Copy, Minus, Plus, SquareTerminal } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from './confirm-dialog';
+import { buildWorkerCommand } from './worker-command';
 interface ConnectWorkerProps {
   networkId?: string;
 }
+
+const MIN_WORKER_COUNT = 1;
+const MAX_WORKER_COUNT = 10;
+const MIN_MAX_JOBS = 1;
+const MAX_MAX_JOBS = 100;
+
+/**
+ * Keeps worker command numeric controls inside the supported task range.
+ */
+function clampNumber(value: number, min: number, max: number) {
+  if (Number.isNaN(value)) {
+    return min;
+  }
+
+  return Math.min(Math.max(value, min), max);
+}
+
 export function ConnectWorker({ networkId }: ConnectWorkerProps) {
   const {
     state: { selectedWorkspaceId },
@@ -32,10 +52,19 @@ export function ConnectWorker({ networkId }: ConnectWorkerProps) {
     },
   });
   const [open, setOpen] = useState(false);
+  const [workerCount, setWorkerCount] = useState(1);
+  const [maxJobs, setMaxJobs] = useState(10);
 
-  const rawCommand = import.meta.env.PROD
-    ? `docker run -d --name open-asm-worker -e API_KEY=${data?.apiKey} -e API=${window.location.origin} -e MAX_JOBS=10 open-asm-worker:latest`
-    : `task worker:dev replicas=1 maxJobs=10 apiKey=${data?.apiKey} ${networkId ? `network=${networkId}` : ''}`;
+  const rawCommand = useMemo(
+    () =>
+      buildWorkerCommand({
+        apiKey: data?.apiKey,
+        maxJobs,
+        networkId,
+        replicas: workerCount,
+      }),
+    [data?.apiKey, maxJobs, networkId, workerCount],
+  );
 
   const { mutate } = useWorkspacesControllerRotateApiKey({
     mutation: {
@@ -57,6 +86,14 @@ export function ConnectWorker({ networkId }: ConnectWorkerProps) {
     toast.success('Command copied to clipboard');
   };
 
+  const handleWorkerCountChange = (value: number) => {
+    setWorkerCount(clampNumber(value, MIN_WORKER_COUNT, MAX_WORKER_COUNT));
+  };
+
+  const handleMaxJobsChange = (value: number) => {
+    setMaxJobs(clampNumber(value, MIN_MAX_JOBS, MAX_MAX_JOBS));
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -73,6 +110,58 @@ export function ConnectWorker({ networkId }: ConnectWorkerProps) {
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="worker-count">Workers</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Remove worker"
+                  disabled={workerCount <= MIN_WORKER_COUNT}
+                  onClick={() => handleWorkerCountChange(workerCount - 1)}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Input
+                  id="worker-count"
+                  type="number"
+                  min={MIN_WORKER_COUNT}
+                  max={MAX_WORKER_COUNT}
+                  value={workerCount}
+                  onChange={(event) =>
+                    handleWorkerCountChange(Number(event.target.value))
+                  }
+                  className="text-center"
+                  aria-label="Worker count"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Add worker"
+                  disabled={workerCount >= MAX_WORKER_COUNT}
+                  onClick={() => handleWorkerCountChange(workerCount + 1)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="worker-max-jobs">Jobs per worker</Label>
+              <Input
+                id="worker-max-jobs"
+                type="number"
+                min={MIN_MAX_JOBS}
+                max={MAX_MAX_JOBS}
+                value={maxJobs}
+                onChange={(event) =>
+                  handleMaxJobsChange(Number(event.target.value))
+                }
+              />
+            </div>
+          </div>
           {/* <p>API Key:</p>
                     <div className="relative bg-black text-white font-mono rounded-md p-4 text-sm">
                         <pre className="whitespace-pre-wrap">{apiKey}</pre>

@@ -74,6 +74,9 @@ export class JobHistoryDetailResponseDto {
   @ApiProperty({ type: () => [Tool] })
   tools?: Tool[];
 
+  @ApiProperty({ type: () => [String] })
+  pipelineToolNames?: string[];
+
   @ApiProperty({ type: () => [Job] })
   jobs: Job[];
 

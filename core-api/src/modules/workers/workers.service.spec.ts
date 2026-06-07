@@ -1,8 +1,10 @@
+import { JobStatus } from '@/common/enums/enum';
+import { RedisService } from '@/services/redis/redis.service';
 import { ConfigService } from '@nestjs/config';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import type { Repository } from 'typeorm';
 import { ApiKeysService } from '../apikeys/apikeys.service';
 import { Asset } from '../assets/entities/assets.entity';
 import { JobsRegistryService } from '../jobs-registry/jobs-registry.service';
@@ -10,99 +12,106 @@ import { InternalNetwork } from '../internal-networks/entities/internal-network.
 import { NetworkInterface } from '../internal-networks/entities/network-interface.entity';
 import { WorkspaceTool } from '../tools/entities/workspace_tools.entity';
 import { ToolsService } from '../tools/tools.service';
-import { RedisService } from '@/services/redis/redis.service';
 import { AliveStreamManager } from './alive-stream-manager.service';
 import { WorkerInstance } from './entities/worker.entity';
 import { WorkersService } from './workers.service';
 
+type LooseMock = ReturnType<typeof jest.fn> & {
+  mockResolvedValue(value: unknown): LooseMock;
+  mockReturnValue(value: unknown): LooseMock;
+  mockReturnValueOnce(value: unknown): LooseMock;
+};
+
+const mockFn = (): LooseMock => jest.fn() as LooseMock;
+
 describe('WorkersService', () => {
   let service: WorkersService;
-  let mockWorkerInstanceRepository: Partial<Repository<WorkerInstance>>;
-  let mockAssetRepository: Partial<Repository<any>>;
-  let mockWorkspaceToolRepository: Partial<Repository<any>>;
-  let mockInternalNetworkRepository: Partial<Repository<any>>;
-  let mockNetworkInterfaceRepository: Partial<Repository<any>>;
-  let mockJobsRegistryService: Partial<JobsRegistryService>;
-  let mockApiKeysService: Partial<ApiKeysService>;
-  let mockConfigService: Partial<ConfigService>;
-  let mockToolsService: Partial<ToolsService>;
-  let mockRedisService: Partial<RedisService>;
-  let mockAliveStreamManager: Partial<AliveStreamManager>;
+  let mockWorkerInstanceRepository: any;
+  let mockAssetRepository: any;
+  let mockWorkspaceToolRepository: any;
+  let mockInternalNetworkRepository: any;
+  let mockNetworkInterfaceRepository: any;
+  let mockJobsRegistryService: any;
+  let mockApiKeysService: any;
+  let mockConfigService: any;
+  let mockToolsService: any;
+  let mockRedisService: any;
+  let mockAliveStreamManager: any;
 
   beforeEach(async () => {
     mockWorkerInstanceRepository = {
-      find: jest.fn(),
-      findOne: jest.fn(),
-      save: jest.fn(),
-      update: jest.fn(),
-      delete: jest.fn(),
-      createQueryBuilder: jest.fn().mockReturnThis(),
-      leftJoin: jest.fn().mockReturnThis(),
-      leftJoinAndSelect: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      select: jest.fn().mockReturnThis(),
-      getOne: jest.fn(),
-      getOneOrFail: jest.fn(),
-      getMany: jest.fn(),
-      getManyAndCount: jest.fn(),
-      getRawMany: jest.fn(),
-      getRawOne: jest.fn(),
-    } as any;
+      find: mockFn(),
+      findOne: mockFn(),
+      save: mockFn(),
+      update: mockFn(),
+      delete: mockFn(),
+      createQueryBuilder: mockFn().mockReturnThis(),
+      leftJoin: mockFn().mockReturnThis(),
+      leftJoinAndSelect: mockFn().mockReturnThis(),
+      where: mockFn().mockReturnThis(),
+      andWhere: mockFn().mockReturnThis(),
+      select: mockFn().mockReturnThis(),
+      getOne: mockFn(),
+      getOneOrFail: mockFn(),
+      getMany: mockFn(),
+      getManyAndCount: mockFn(),
+      getRawMany: mockFn(),
+      getRawOne: mockFn(),
+    };
 
     mockAssetRepository = {
-      findOne: jest.fn(),
-    } as any;
+      findOne: mockFn(),
+    };
 
     mockWorkspaceToolRepository = {
-      findOne: jest.fn(),
-    } as any;
+      findOne: mockFn(),
+    };
 
     mockInternalNetworkRepository = {
-      findOne: jest.fn(),
-    } as any;
+      findOne: mockFn(),
+    };
 
     mockNetworkInterfaceRepository = {
-      insert: jest.fn(),
-    } as any;
+      insert: mockFn(),
+    };
 
     mockJobsRegistryService = {
       repo: {
-        createQueryBuilder: jest.fn().mockReturnThis(),
-        update: jest.fn().mockReturnThis(),
-        set: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        execute: jest.fn(),
+        createQueryBuilder: mockFn().mockReturnThis(),
+        update: mockFn().mockReturnThis(),
+        set: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        execute: mockFn(),
       },
-    } as any;
+    };
 
     mockApiKeysService = {
       apiKeysRepository: {
-        findOne: jest.fn(),
+        findOne: mockFn(),
       },
-    } as any;
+    };
 
     mockConfigService = {
-      get: jest.fn(),
+      get: mockFn(),
     };
 
     mockToolsService = {
-      getBuiltInTools: jest.fn().mockResolvedValue({ data: [] }),
+      getBuiltInTools: mockFn().mockResolvedValue({ data: [] }),
     };
 
     mockRedisService = {
-      publish: jest.fn(),
+      publish: mockFn(),
     };
 
     mockAliveStreamManager = {
-      isActive: jest.fn().mockReturnValue(false),
-      register: jest.fn().mockReturnValue('stream-1'),
-      unregister: jest.fn(),
-      updateAlive: jest.fn(),
-      getActiveWorkerIds: jest.fn().mockReturnValue(new Set()),
-      getActiveStreamCount: jest.fn().mockReturnValue(0),
-    } as any;
+      isActive: mockFn().mockReturnValue(false),
+      register: mockFn().mockReturnValue('stream-1'),
+      unregister: mockFn(),
+      updateAlive: mockFn(),
+      getActiveWorkerIds: mockFn().mockReturnValue(new Set()),
+      getActiveStreamCount: mockFn().mockReturnValue(0),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -168,19 +177,19 @@ describe('WorkersService', () => {
         lastSeenAt: new Date(Date.now() - 120000),
       } as WorkerInstance;
 
-      (mockWorkerInstanceRepository.find as jest.Mock).mockResolvedValue([
+      (mockWorkerInstanceRepository.find as LooseMock).mockResolvedValue([
         staleWorker,
       ]);
-      (mockAliveStreamManager.isActive as jest.Mock).mockReturnValue(false);
+      (mockAliveStreamManager.isActive as LooseMock).mockReturnValue(false);
 
       // Mock workerLeave dependencies
-      (mockJobsRegistryService.repo as any).execute = jest.fn();
-      (mockWorkerInstanceRepository.delete as jest.Mock).mockResolvedValue(
+      mockJobsRegistryService.repo.execute = mockFn();
+      (mockWorkerInstanceRepository.delete as LooseMock).mockResolvedValue(
         undefined,
       );
       // Mock resetStuckAndFailedJobs
       (mockWorkerInstanceRepository.manager as any) = {
-        query: jest.fn().mockResolvedValue(undefined),
+        query: mockFn().mockResolvedValue(undefined),
       };
 
       await service.autoCleanupWorkersAndJobs();
@@ -199,14 +208,14 @@ describe('WorkersService', () => {
         lastSeenAt: new Date(Date.now() - 120000),
       } as WorkerInstance;
 
-      (mockWorkerInstanceRepository.find as jest.Mock).mockResolvedValue([
+      (mockWorkerInstanceRepository.find as LooseMock).mockResolvedValue([
         staleWorker,
       ]);
-      (mockAliveStreamManager.isActive as jest.Mock).mockReturnValue(true);
+      (mockAliveStreamManager.isActive as LooseMock).mockReturnValue(true);
 
       // Mock resetStuckAndFailedJobs
       (mockWorkerInstanceRepository.manager as any) = {
-        query: jest.fn().mockResolvedValue(undefined),
+        query: mockFn().mockResolvedValue(undefined),
       };
 
       await service.autoCleanupWorkersAndJobs();
@@ -227,22 +236,22 @@ describe('WorkersService', () => {
         lastSeenAt: new Date(Date.now() - 120000),
       } as WorkerInstance;
 
-      (mockWorkerInstanceRepository.find as jest.Mock).mockResolvedValue([
+      (mockWorkerInstanceRepository.find as LooseMock).mockResolvedValue([
         activeStreamWorker,
         trulyStaleWorker,
       ]);
-      (mockAliveStreamManager.isActive as jest.Mock)
+      (mockAliveStreamManager.isActive as LooseMock)
         .mockReturnValueOnce(true) // worker-1 has active stream
         .mockReturnValueOnce(false); // worker-2 does not
 
       // Mock workerLeave dependencies
-      (mockJobsRegistryService.repo as any).execute = jest.fn();
-      (mockWorkerInstanceRepository.delete as jest.Mock).mockResolvedValue(
+      mockJobsRegistryService.repo.execute = mockFn();
+      (mockWorkerInstanceRepository.delete as LooseMock).mockResolvedValue(
         undefined,
       );
       // Mock resetStuckAndFailedJobs
       (mockWorkerInstanceRepository.manager as any) = {
-        query: jest.fn().mockResolvedValue(undefined),
+        query: mockFn().mockResolvedValue(undefined),
       };
 
       await service.autoCleanupWorkersAndJobs();
@@ -254,17 +263,30 @@ describe('WorkersService', () => {
     });
 
     it('should handle no stale workers', async () => {
-      (mockWorkerInstanceRepository.find as jest.Mock).mockResolvedValue([]);
+      (mockWorkerInstanceRepository.find as LooseMock).mockResolvedValue([]);
 
       // Mock resetStuckAndFailedJobs
       (mockWorkerInstanceRepository.manager as any) = {
-        query: jest.fn().mockResolvedValue(undefined),
+        query: mockFn().mockResolvedValue(undefined),
       };
 
       await service.autoCleanupWorkersAndJobs();
 
       expect(mockAliveStreamManager.isActive).not.toHaveBeenCalled();
       expect(mockWorkerInstanceRepository.delete).not.toHaveBeenCalled();
+    });
+
+    it('should not reset failed jobs when cleaning up unavailable workers', async () => {
+      const query = mockFn().mockResolvedValue(undefined);
+      (mockWorkerInstanceRepository.find as LooseMock).mockResolvedValue([]);
+      (mockWorkerInstanceRepository.manager as any) = { query };
+
+      await service.autoCleanupWorkersAndJobs();
+
+      expect(query).toHaveBeenCalledTimes(1);
+      expect(query.mock.calls[0][0]).not.toContain(
+        `j.status = '${JobStatus.FAILED}'`,
+      );
     });
   });
 });

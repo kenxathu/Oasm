@@ -16,6 +16,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -29,6 +30,7 @@ import { JobHistoryResponseDto } from './dto/job-history.dto';
 import {
   GetNextJobResponseDto,
   JobTimelineResponseDto,
+  UpdateJobHistoryPipelineDto,
   UpdateResultDto,
   WorkerIdParams,
 } from './dto/jobs-registry.dto';
@@ -147,6 +149,71 @@ export class JobsRegistryController {
     @Param('id') id: string,
   ): Promise<JobHistoryDetailResponseDto> {
     return this.jobsRegistryService.getJobHistoryDetail(workspaceId, id);
+  }
+
+  @UseGuards(WorkspaceOwnerGuard)
+  @Doc({
+    summary: 'Update job history pipeline',
+    description:
+      'Updates the ordered tools for a job history pipeline and cancels pending or in-progress jobs for removed tools.',
+    response: {
+      serialization: DefaultMessageResponseDto,
+    },
+    request: {
+      getWorkspaceId: true,
+    },
+  })
+  @Patch('/histories/:id/pipeline')
+  updateJobHistoryPipeline(
+    @WorkspaceId() workspaceId: string,
+    @Param() params: IdQueryParamDto,
+    @Body() dto: UpdateJobHistoryPipelineDto,
+  ) {
+    return this.jobsRegistryService.updateJobHistoryPipeline(
+      workspaceId,
+      params.id,
+      dto,
+    );
+  }
+
+  @UseGuards(WorkspaceOwnerGuard)
+  @Doc({
+    summary: 'Start a job history scan',
+    description:
+      'Moves cancelled and failed jobs in a job history back to pending so workers can pick them up again.',
+    response: {
+      serialization: DefaultMessageResponseDto,
+    },
+    request: {
+      getWorkspaceId: true,
+    },
+  })
+  @Post('/histories/:id/start')
+  startJobHistory(
+    @WorkspaceId() workspaceId: string,
+    @Param() params: IdQueryParamDto,
+  ) {
+    return this.jobsRegistryService.startJobHistory(workspaceId, params.id);
+  }
+
+  @UseGuards(WorkspaceOwnerGuard)
+  @Doc({
+    summary: 'Stop a job history scan',
+    description:
+      'Cancels pending and in-progress jobs in a job history so workers stop receiving work from that scan.',
+    response: {
+      serialization: DefaultMessageResponseDto,
+    },
+    request: {
+      getWorkspaceId: true,
+    },
+  })
+  @Post('/histories/:id/stop')
+  stopJobHistory(
+    @WorkspaceId() workspaceId: string,
+    @Param() params: IdQueryParamDto,
+  ) {
+    return this.jobsRegistryService.stopJobHistory(workspaceId, params.id);
   }
 
   @UseGuards(WorkspaceOwnerGuard)
