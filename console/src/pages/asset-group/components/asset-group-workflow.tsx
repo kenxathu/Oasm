@@ -29,15 +29,33 @@ import {
   useWorkflowsControllerDeleteWorkflow,
   useWorkflowsControllerUpdateWorkflow,
 } from '@/services/apis/gen/queries';
+<<<<<<< HEAD
 import { ArrowRight, Loader2Icon, MoveUpRight, Plus, X } from 'lucide-react';
+=======
+import {
+  ArrowRight,
+  Loader2Icon,
+  Lock,
+  MoveUpRight,
+  Plus,
+  X,
+} from 'lucide-react';
+>>>>>>> main
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   addToolToPipeline,
   createPipelineWorkflowContent,
+<<<<<<< HEAD
   getPipelineToolNames,
   removeToolFromPipeline,
+=======
+  DEFAULT_PIPELINE_TOOL_NAMES,
+  getPipelineToolNames,
+  removeToolFromPipeline,
+  withDefaultPipelineTools,
+>>>>>>> main
 } from './pipeline-tools';
 
 export default function AssetGroupWorkflow({
@@ -66,7 +84,17 @@ export default function AssetGroupWorkflow({
   const groupWorkflowItems = groupWorkflows?.data || [];
   const currentGroupWorkflow = groupWorkflowItems[0];
   const currentWorkflow = currentGroupWorkflow?.workflow;
+<<<<<<< HEAD
   const currentPipelineJobs = currentWorkflow?.content?.jobs || [];
+=======
+  const currentPipelineJobs = useMemo(
+    () =>
+      currentWorkflow?.content
+        ? withDefaultPipelineTools(currentWorkflow.content).jobs || []
+        : [],
+    [currentWorkflow?.content],
+  );
+>>>>>>> main
 
   const scanTools = useMemo(() => {
     return (
@@ -150,6 +178,7 @@ export default function AssetGroupWorkflow({
   };
 
   const handleRemoveTool = async (toolName: string) => {
+<<<<<<< HEAD
     const workflow = getWorkflowContainingTool(toolName)?.workflow;
 
     if (!workflow) {
@@ -157,6 +186,17 @@ export default function AssetGroupWorkflow({
       return;
     }
 
+=======
+    if (DEFAULT_PIPELINE_TOOL_NAMES.includes(toolName)) return;
+
+    const workflow = getWorkflowContainingTool(toolName)?.workflow;
+
+    if (!workflow) {
+      toast.error('Workflow not found');
+      return;
+    }
+
+>>>>>>> main
     try {
       setIsProcessing(true);
 
@@ -299,6 +339,12 @@ export default function AssetGroupWorkflow({
           <div className="flex flex-wrap items-center gap-2">
             {currentPipelineJobs.map((job, index) => {
               const tool = toolByName.get(job.run);
+<<<<<<< HEAD
+=======
+              const isDefaultTool = DEFAULT_PIPELINE_TOOL_NAMES.includes(
+                job.run,
+              );
+>>>>>>> main
               return (
                 <div key={`${job.run}-${index}`} className="flex items-center">
                   <div className="flex h-12 items-center gap-2 rounded-md border bg-background px-2">
@@ -311,6 +357,7 @@ export default function AssetGroupWorkflow({
                     <span className="text-sm font-medium capitalize">
                       {job.run}
                     </span>
+<<<<<<< HEAD
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -325,6 +372,33 @@ export default function AssetGroupWorkflow({
                       </TooltipTrigger>
                       <TooltipContent>Remove</TooltipContent>
                     </Tooltip>
+=======
+                    {isDefaultTool ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex h-6 w-6 items-center justify-center text-muted-foreground">
+                            <Lock className="h-3.5 w-3.5" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>Default tool</TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            disabled={isProcessing}
+                            onClick={() => handleRemoveTool(job.run)}
+                          >
+                            <X />
+                            <span className="sr-only">Remove {job.run}</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Remove</TooltipContent>
+                      </Tooltip>
+                    )}
+>>>>>>> main
                   </div>
                   {index < currentPipelineJobs.length - 1 && (
                     <ArrowRight className="mx-2 text-muted-foreground" />

@@ -36,7 +36,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     git \
     perl \
+    libjson-perl \
     libnet-ssleay-perl \
+    libxml-writer-perl \
     libwww-perl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -65,10 +67,12 @@ USER worker
 #   WORKER_API_KEY - Your worker authentication key
 # Optional:
 #   WORKER_MAX_CONCURRENCY - Max concurrent tasks (default: 10)
+#   WORKER_INSTANCES - Worker instances to run in this process, 1-10 (default: 1)
 #   WORKER_GRPC_HOST - gRPC server host (default: localhost)
 #   WORKER_GRPC_PORT - gRPC server port (default: 16276)
 #   WORKER_TOOL_PATH - Tool path (default: oasm-tools)
 ENV WORKER_MAX_CONCURRENCY=10
+ENV WORKER_INSTANCES=1
 ENV WORKER_GRPC_HOST=localhost
 ENV WORKER_GRPC_PORT=16276
 ENV WORKER_TOOL_PATH=oasm-tools

@@ -60,6 +60,8 @@ import { JobErrorLog } from './entities/job-error-log.entity';
 import { JobHistory } from './entities/job-history.entity';
 import { Job } from './entities/job.entity';
 
+const DEFAULT_PIPELINE_TOOL_NAMES = ['subfinder', 'naabu', 'httpx'];
+
 @Injectable()
 export class JobsRegistryService {
   constructor(
@@ -75,6 +77,18 @@ export class JobsRegistryService {
     @InjectQueue(BullMQName.JOB_RESULT) private jobResultQueue: Queue,
     private eventEmitter: EventEmitter2,
   ) {}
+
+  private withDefaultPipelineTools(toolNames: string[]): string[] {
+    const uniqueToolNames = [...new Set(toolNames)];
+
+    return [
+      ...DEFAULT_PIPELINE_TOOL_NAMES,
+      ...uniqueToolNames.filter(
+        (toolName) => !DEFAULT_PIPELINE_TOOL_NAMES.includes(toolName),
+      ),
+    ];
+  }
+
   public async getManyJobs(
     query: GetManyJobsRequestDto,
   ): Promise<GetManyBaseResponseDto<Job>> {
@@ -417,7 +431,7 @@ export class JobsRegistryService {
         .addOrderBy('jobs.createdAt', 'ASC');
 
       // [OPT-3] Only join workspaceTargets/workspaces when actually needed
-      if (isBuiltInTools && worker.scope !== WorkerScope.CLOUD) {
+      if (!isBuiltInTools || worker.scope !== WorkerScope.CLOUD) {
         queryBuilder
           .leftJoin('target.workspaceTargets', 'workspace_targets')
           .leftJoin('workspace_targets.workspace', 'workspaces');
@@ -436,6 +450,15 @@ export class JobsRegistryService {
         }
       } else {
         queryBuilder.andWhere('tool.id = :toolId', { toolId: worker.tool.id });
+        queryBuilder.andWhere(
+          `EXISTS (
+            SELECT 1 FROM workspace_tools wt
+            WHERE wt."workspaceId" = workspaces.id
+            AND wt."toolId" = :toolId
+            AND wt."isEnabled" = true
+          )`,
+          { toolId: worker.tool.id },
+        );
       }
 
       if (worker.internalNetworkId) {
@@ -1067,6 +1090,10 @@ export class JobsRegistryService {
       workflowName: string;
       jobHistoryName: string;
       jobRunType: JobRunType;
+      targetId?: string;
+      targetValue?: string;
+      targetType?: string;
+      targetCount?: string;
     }
 
     // Query job histories with calculated counts and statuses using subqueries
@@ -1086,6 +1113,10 @@ export class JobsRegistryService {
         '"jobHistory"."updatedAt" as "updatedAt"',
         '"workflow"."name" as "workflowName"',
         '"jobHistory"."jobRunType" as "jobRunType"',
+        '(array_agg(DISTINCT "jTarget".id))[1] as "targetId"',
+        '(array_agg(DISTINCT "jTarget".value))[1] as "targetValue"',
+        '(array_agg(DISTINCT "jTarget".type))[1] as "targetType"',
+        'COUNT(DISTINCT "jTarget".id) as "targetCount"',
         // Subquery to count total jobs for this job history
         '(SELECT COUNT(*) FROM jobs WHERE "jobHistoryId" = "jobHistory".id) as "totalJobs"',
         // Subquery with CASE to calculate status based on job statuses
@@ -1130,6 +1161,10 @@ export class JobsRegistryService {
       workflowName: raw.workflowName,
       jobHistoryName: raw.jobHistoryName,
       jobRunType: raw.jobRunType,
+      targetId: raw.targetId,
+      targetValue: raw.targetValue,
+      targetType: raw.targetType,
+      targetCount: raw.targetCount ? parseInt(raw.targetCount) : 0,
     }));
 
     return getManyResponse({ query, data: transformedData, total });
@@ -1181,10 +1216,14 @@ export class JobsRegistryService {
       {},
       workspaceId,
     );
+    const pipelineToolNames = this.withDefaultPipelineTools(
+      jobHistory.workflow?.content?.jobs?.map((job) => job.run) ?? [],
+    );
+
     // Map jobs to tools
-    tools = jobHistory.workflow?.content.jobs
+    tools = pipelineToolNames
       .map((job) => {
-        const tool = instaledTools.data.find((tool) => tool.name === job.run);
+        const tool = instaledTools.data.find((tool) => tool.name === job);
         return tool;
       })
       .filter((tool) => tool !== undefined);
@@ -1205,7 +1244,11 @@ export class JobsRegistryService {
       createdAt,
       updatedAt,
       tools,
+<<<<<<< HEAD
       pipelineToolNames: workflow?.content?.jobs?.map((job) => job.run) ?? [],
+=======
+      pipelineToolNames,
+>>>>>>> main
       jobs: jobs || [],
     };
   }
@@ -1326,7 +1369,18 @@ export class JobsRegistryService {
       throw new NotFoundException('Job history workflow not found');
     }
 
+<<<<<<< HEAD
     const toolNames = dto.toolNames.map((name) => name.trim()).filter(Boolean);
+=======
+    const workflow = jobHistory.workflow;
+    const existingToolNames =
+      workflow.content?.jobs?.map((job) => job.run).filter(Boolean) ?? [];
+    const toolNames = dto.toolNames.map((name) => name.trim()).filter(Boolean);
+    const requestedToolNames = this.withDefaultPipelineTools(toolNames);
+    const addedToolNames = requestedToolNames.filter(
+      (toolName) => !existingToolNames.includes(toolName),
+    );
+>>>>>>> main
     const installedTools = await this.toolsService.getInstalledTools(
       {},
       workspaceId,
@@ -1334,7 +1388,11 @@ export class JobsRegistryService {
     const installedToolNames = new Set(
       installedTools.data.map((tool) => tool.name),
     );
+<<<<<<< HEAD
     const missingToolNames = toolNames.filter(
+=======
+    const missingToolNames = addedToolNames.filter(
+>>>>>>> main
       (toolName) => !installedToolNames.has(toolName),
     );
 
@@ -1344,10 +1402,13 @@ export class JobsRegistryService {
       );
     }
 
+<<<<<<< HEAD
     const workflow = jobHistory.workflow;
     const existingToolNames =
       workflow.content?.jobs?.map((job) => job.run).filter(Boolean) ?? [];
     const requestedToolNames = [...new Set(toolNames)];
+=======
+>>>>>>> main
     const removedToolNames = existingToolNames.filter(
       (toolName) => !requestedToolNames.includes(toolName),
     );
