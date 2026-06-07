@@ -73,6 +73,9 @@ func Execute() {
 	rootCmd.Flags().String("network", "", "Network ID for internal network connection")
 	viper.BindPFlag("network", rootCmd.Flags().Lookup("network"))
 
+	rootCmd.Flags().Int("job-timeout-seconds", 300, "Maximum seconds a scan command can run")
+	viper.BindPFlag("job_timeout_seconds", rootCmd.Flags().Lookup("job-timeout-seconds"))
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

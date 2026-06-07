@@ -1,22 +1,35 @@
 import Page from '@/components/common/page';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DataTable } from '@/components/ui/data-table';
 import JobStatusBadge from '@/components/ui/job-status';
 import { useServerDataTable } from '@/hooks/useServerDataTable';
+import {
+  startJobHistoryScan,
+  stopJobHistoryScan,
+} from '@/services/apis/jobs-registry';
 import {
   type JobHistoryResponseDto,
   JobStatus,
   useJobsRegistryControllerGetManyJobHistories,
 } from '@/services/apis/gen/queries';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
-import { Calendar } from 'lucide-react';
+import { Calendar, Loader2Icon, Play, Square } from 'lucide-react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 dayjs.extend(duration);
 
 const JobsRegistryPage = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [mutatingHistoryId, setMutatingHistoryId] = useState<string | null>(
+    null,
+  );
   const {
     tableParams: { page, pageSize, sortBy, sortOrder },
     tableHandlers: { setPage, setPageSize, setParams },
@@ -40,6 +53,33 @@ const JobsRegistryPage = () => {
       },
     },
   );
+
+  const refreshJobHistories = () =>
+    queryClient.invalidateQueries({
+      queryKey: ['/api/jobs-registry/histories'],
+    });
+
+  const startScanMutation = useMutation({
+    mutationFn: startJobHistoryScan,
+    onMutate: (id) => setMutatingHistoryId(id),
+    onSuccess: () => {
+      toast.success('Scan started successfully');
+      void refreshJobHistories();
+    },
+    onError: () => toast.error('Failed to start scan'),
+    onSettled: () => setMutatingHistoryId(null),
+  });
+
+  const stopScanMutation = useMutation({
+    mutationFn: stopJobHistoryScan,
+    onMutate: (id) => setMutatingHistoryId(id),
+    onSuccess: () => {
+      toast.success('Scan stopped successfully');
+      void refreshJobHistories();
+    },
+    onError: () => toast.error('Failed to stop scan'),
+    onSettled: () => setMutatingHistoryId(null),
+  });
 
   const columns: ColumnDef<JobHistoryResponseDto>[] = [
     {
@@ -98,6 +138,80 @@ const JobsRegistryPage = () => {
               {row.original?.jobRunType || 'manual'}
             </span>
           </Badge>
+        );
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: ({ row }) => {
+        const history = row.original;
+        const canStop =
+          history.status === JobStatus.pending ||
+          history.status === JobStatus.in_progress;
+        const canStart =
+          history.status === JobStatus.cancelled ||
+          history.status === JobStatus.failed;
+        const isPending =
+          mutatingHistoryId === history.id &&
+          (startScanMutation.isPending || stopScanMutation.isPending);
+
+        if (!canStop && !canStart) {
+          return (
+            <div className="flex justify-end text-xs text-muted-foreground">
+              No action
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex justify-end">
+            {canStop && (
+              <ConfirmDialog
+                title="Stop scan"
+                description="This cancels pending jobs and prevents workers from picking up more work from this scan."
+                confirmText="Stop scan"
+                onConfirm={() => stopScanMutation.mutate(history.id)}
+                trigger={
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={isPending}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {isPending ? (
+                      <Loader2Icon className="animate-spin" />
+                    ) : (
+                      <Square />
+                    )}
+                    Stop
+                  </Button>
+                }
+              />
+            )}
+            {canStart && (
+              <ConfirmDialog
+                title="Start scan"
+                description="This moves stopped or failed jobs back to pending so workers can pick them up again."
+                confirmText="Start scan"
+                onConfirm={() => startScanMutation.mutate(history.id)}
+                trigger={
+                  <Button
+                    size="sm"
+                    disabled={isPending}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {isPending ? (
+                      <Loader2Icon className="animate-spin" />
+                    ) : (
+                      <Play />
+                    )}
+                    Start
+                  </Button>
+                }
+              />
+            )}
+          </div>
         );
       },
     },

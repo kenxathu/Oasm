@@ -8,13 +8,14 @@ import (
 )
 
 type Config struct {
-	ApiKey         string `mapstructure:"api_key"`
-	MaxConcurrency int    `mapstructure:"max_concurrency"`
-	GrpcHost       string `mapstructure:"grpc_host"`
-	GrpcPort       int    `mapstructure:"grpc_port"`
-	ToolPath       string `mapstructure:"tool_path"`
-	Network        string `mapstructure:"network"`
-	WorkspaceRoot  string `mapstructure:"workspace_root"`
+	ApiKey            string `mapstructure:"api_key"`
+	MaxConcurrency    int    `mapstructure:"max_concurrency"`
+	GrpcHost          string `mapstructure:"grpc_host"`
+	GrpcPort          int    `mapstructure:"grpc_port"`
+	ToolPath          string `mapstructure:"tool_path"`
+	Network           string `mapstructure:"network"`
+	WorkspaceRoot     string `mapstructure:"workspace_root"`
+	JobTimeoutSeconds int    `mapstructure:"job_timeout_seconds"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -31,6 +32,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("grpc_port", 16276)
 	viper.SetDefault("tool_path", "oasm-tools")
 	viper.SetDefault("workspace_root", "agent-sessions")
+	viper.SetDefault("job_timeout_seconds", 300)
 
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {

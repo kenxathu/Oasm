@@ -1,9 +1,23 @@
 import { ScanScheduleSelect } from '@/components/scan-schedule-select';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Image } from '@/components/ui/image';
+import { Input } from '@/components/ui/input';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import RunWorkflowButton from '@/pages/asset-group/components/run-workflow-button';
 import {
-  OnSchedule,
   ToolCategory,
+  type Tool,
   ToolsControllerGetManyToolsType,
   UpdateTargetDtoScanSchedule,
   useAssetGroupControllerAddManyWorkflows,
@@ -15,10 +29,16 @@ import {
   useWorkflowsControllerDeleteWorkflow,
   useWorkflowsControllerUpdateWorkflow,
 } from '@/services/apis/gen/queries';
-import { MoveUpRight, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowRight, Loader2Icon, MoveUpRight, Plus, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import {
+  addToolToPipeline,
+  createPipelineWorkflowContent,
+  getPipelineToolNames,
+  removeToolFromPipeline,
+} from './pipeline-tools';
 
 export default function AssetGroupWorkflow({
   assetGroupId,
@@ -29,307 +49,221 @@ export default function AssetGroupWorkflow({
     useAssetGroupControllerGetWorkflowsByAssetGroupsId(assetGroupId);
   const { data: workspaceToolsInstalled } =
     useToolsControllerGetInstalledTools();
-  const [hoveredToolId, setHoveredToolId] = useState<string | null>(null);
+  const [isAddToolOpen, setIsAddToolOpen] = useState(false);
+  const [toolSearch, setToolSearch] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
   const {
     mutate: updateAssetGroupWorkflowMutation,
     isPending: isPendingUpdateSchedule,
   } = useAssetGroupControllerUpdateAssetGroupWorkflow();
-  // Create/update/delete workflow mutation
   const createWorkflowMutation = useWorkflowsControllerCreateWorkflow();
   const updateWorkflowMutation = useWorkflowsControllerUpdateWorkflow();
   const deleteWorkflowMutation = useWorkflowsControllerDeleteWorkflow();
   const addWorkflowsMutation = useAssetGroupControllerAddManyWorkflows();
   const removeWorkflowsMutation = useAssetGroupControllerRemoveManyWorkflows();
 
-  // Filter tools with category "vulnerabilities"
-  const toolProviders =
-    workspaceToolsInstalled?.data?.filter(
-      (tool) =>
-        tool.type === ToolsControllerGetManyToolsType.provider ||
-        tool.category === ToolCategory.vulnerabilities,
-    ) || [];
+  const groupWorkflowItems = groupWorkflows?.data || [];
+  const currentGroupWorkflow = groupWorkflowItems[0];
+  const currentWorkflow = currentGroupWorkflow?.workflow;
+  const currentPipelineJobs = currentWorkflow?.content?.jobs || [];
 
-  // Check if a tool is already added to this group
-  const isToolInGroup = (toolName: string) => {
-    // Get all jobs from all workflows in the group
-    const allJobs =
-      groupWorkflows?.data?.flatMap(
-        (groupWorkflow) => groupWorkflow.workflow.content?.jobs || [],
-      ) || [];
+  const scanTools = useMemo(() => {
+    return (
+      workspaceToolsInstalled?.data?.filter(
+        (tool) =>
+          (tool.type === ToolsControllerGetManyToolsType.provider ||
+            tool.category !== ToolCategory.assistant) &&
+          tool.category !== ToolCategory.assistant,
+      ) || []
+    );
+  }, [workspaceToolsInstalled?.data]);
 
-    // Extract all run values from jobs
-    const toolsName = allJobs.map((job: { run: string }) => job.run) || [];
+  const pipelineToolNames = useMemo(
+    () => getPipelineToolNames(groupWorkflowItems),
+    [groupWorkflowItems],
+  );
 
-    // Check if the tool name exists in any workflow
-    return toolsName.includes(toolName);
-  };
+  const toolByName = useMemo(() => {
+    return new Map(scanTools.map((tool) => [tool.name, tool]));
+  }, [scanTools]);
 
-  // Get the workflow that contains a specific tool
+  const availableTools = useMemo(() => {
+    const normalizedSearch = toolSearch.trim().toLowerCase();
+
+    return scanTools.filter((tool) => {
+      const alreadyInPipeline = pipelineToolNames.includes(tool.name);
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        tool.name.toLowerCase().includes(normalizedSearch) ||
+        tool.description?.toLowerCase().includes(normalizedSearch);
+
+      return !alreadyInPipeline && matchesSearch;
+    });
+  }, [pipelineToolNames, scanTools, toolSearch]);
+
   const getWorkflowContainingTool = (toolName: string) => {
-    return groupWorkflows?.data?.find((groupWorkflow) => {
+    return groupWorkflowItems.find((groupWorkflow) => {
       const jobs = groupWorkflow.workflow.content?.jobs || [];
-      const toolsName = jobs.map((job: { run: string }) => job.run) || [];
-      return toolsName.includes(toolName);
+      return jobs.some((job) => job.run === toolName);
     });
   };
 
-  // Get the current workflow in the group (assuming there's only one workflow per group)
-  const getCurrentWorkflow = () => {
-    return groupWorkflows?.data?.[0];
+  const handleAddTool = async (tool: Tool) => {
+    try {
+      setIsProcessing(true);
+
+      if (currentWorkflow) {
+        await updateWorkflowMutation.mutateAsync({
+          id: currentWorkflow.id,
+          data: {
+            content: addToolToPipeline(currentWorkflow.content, tool.name),
+          },
+        });
+      } else {
+        const createdWorkflow = await createWorkflowMutation.mutateAsync({
+          data: {
+            name: `Group Workflow - ${assetGroupId}`,
+            content: createPipelineWorkflowContent(assetGroupId, tool.name),
+            filePath: '',
+          },
+        });
+
+        await addWorkflowsMutation.mutateAsync({
+          groupId: assetGroupId,
+          data: {
+            workflowIds: [createdWorkflow.id],
+          },
+        });
+      }
+
+      setIsAddToolOpen(false);
+      setToolSearch('');
+      await refetchWorkflows();
+      toast.success(`${tool.name} added to pipeline`);
+    } catch (error) {
+      console.error('Error adding tool:', error);
+      toast.error('Failed to add tool. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  // Handle tool click - add if not exists, remove if exists
-  const handleToolClick = async (tool: { name: string; id: string }) => {
-    const isInGroup = isToolInGroup(tool.name);
+  const handleRemoveTool = async (toolName: string) => {
+    const workflow = getWorkflowContainingTool(toolName)?.workflow;
 
-    if (isInGroup) {
-      // If tool is in group, find the workflow containing it and remove the tool
-      const workflow = getWorkflowContainingTool(tool.name)?.workflow;
+    if (!workflow) {
+      toast.error('Workflow not found');
+      return;
+    }
 
-      if (!workflow) {
-        toast.error('Workflow not found');
-        return;
+    try {
+      setIsProcessing(true);
+
+      const updatedContent = removeToolFromPipeline(workflow.content, toolName);
+
+      if (updatedContent.jobs.length === 0) {
+        await removeWorkflowsMutation.mutateAsync({
+          groupId: assetGroupId,
+          data: {
+            workflowIds: [workflow.id],
+          },
+        });
+
+        await deleteWorkflowMutation.mutateAsync({
+          id: workflow.id,
+        });
+      } else {
+        await updateWorkflowMutation.mutateAsync({
+          id: workflow.id,
+          data: {
+            content: updatedContent,
+          },
+        });
       }
 
-      try {
-        setIsProcessing(true);
-
-        // Filter out the tool from the workflow's jobs
-        const updatedJobs =
-          workflow.content?.jobs?.filter((job) => job.run !== tool.name) || [];
-
-        if (updatedJobs.length === 0) {
-          // If no jobs left, remove workflow from asset group and delete it
-          await removeWorkflowsMutation.mutateAsync({
-            groupId: assetGroupId,
-            data: {
-              workflowIds: [workflow.id],
-            },
-          });
-
-          await deleteWorkflowMutation.mutateAsync({
-            id: workflow.id,
-          });
-
-          toast.success(
-            `Workflow with tool ${tool.name} removed successfully!`,
-          );
-        } else {
-          // Update the workflow with the remaining jobs
-          const updatedWorkflowContent = {
-            ...workflow.content,
-            jobs: updatedJobs,
-          };
-
-          await updateWorkflowMutation.mutateAsync({
-            id: workflow.id,
-            data: {
-              content: updatedWorkflowContent,
-            },
-          });
-
-          toast.success(
-            `Tool ${tool.name} removed from workflow successfully!`,
-          );
-        }
-
-        // Refetch workflows to update the UI
-        await refetchWorkflows();
-      } catch (error) {
-        console.error('Error removing tool from workflow:', error);
-        toast.error('Failed to remove tool. Please try again.');
-      } finally {
-        setIsProcessing(false);
-      }
-    } else {
-      // If tool is not in group, check if group already has a workflow
-      const existingWorkflow = getCurrentWorkflow()?.workflow;
-
-      try {
-        setIsProcessing(true);
-
-        if (existingWorkflow) {
-          // If group already has a workflow, update it by adding the tool
-          const updatedJobs = [
-            ...(existingWorkflow.content?.jobs || []),
-            {
-              name: tool.name,
-              run: tool.name,
-            },
-          ];
-
-          const updatedWorkflowContent = {
-            ...existingWorkflow.content,
-            jobs: updatedJobs,
-          };
-
-          await updateWorkflowMutation.mutateAsync({
-            id: existingWorkflow.id,
-            data: {
-              content: updatedWorkflowContent,
-            },
-          });
-
-          toast.success(
-            `Tool ${tool.name} added to existing workflow successfully!`,
-          );
-        } else {
-          // If group has no workflow, create a new workflow with this tool
-          const workflowPayload = {
-            data: {
-              name: `Group Workflow - ${assetGroupId}`,
-              content: {
-                on: {
-                  schedule: OnSchedule['0_0_*_*_*'], // Use correct enum value
-                  target: [], // Empty target array
-                },
-                jobs: [
-                  {
-                    name: tool.name,
-                    run: tool.name,
-                  },
-                ],
-                name: `Group Workflow - ${assetGroupId}`,
-              },
-              filePath: '', // Empty filePath
-            },
-          };
-
-          // Create the workflow
-          const createdWorkflow =
-            await createWorkflowMutation.mutateAsync(workflowPayload);
-
-          // Add the workflow to the asset group
-          await addWorkflowsMutation.mutateAsync({
-            groupId: assetGroupId,
-            data: {
-              workflowIds: [createdWorkflow.id],
-            },
-          });
-
-          toast.success(
-            `Workflow created and tool ${tool.name} added successfully!`,
-          );
-        }
-
-        // Refetch workflows to update the UI
-        await refetchWorkflows();
-      } catch (error) {
-        console.error('Error adding tool:', error);
-        toast.error('Failed to add tool. Please try again.');
-      } finally {
-        setIsProcessing(false);
-      }
+      await refetchWorkflows();
+      toast.success(`${toolName} removed from pipeline`);
+    } catch (error) {
+      console.error('Error removing tool from workflow:', error);
+      toast.error('Failed to remove tool. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   return (
-    <div className="space-y-4 mb-4">
-      <h2 className="text-xl font-semibold">Tools</h2>
-      <div className="flex-col md:flex-row flex justify-start md:justify-between md:items-center gap-2">
-        <div className="flex gap-4">
-          {toolProviders.length === 0 && (
-            <div>
-              <Link
-                className="text-blue-500 italic flex items-center gap-1 hover:underline"
-                to={'/tools'}
-              >
-                Open Marketplace <MoveUpRight className="w-4 h-4" />
-              </Link>
-            </div>
-          )}
-          {toolProviders.map((tool) => {
-            const isAdded = isToolInGroup(tool.name);
-            const isHovered = hoveredToolId === tool.id;
-            return (
-              <div
-                key={tool.id}
-                style={{
-                  position: 'relative',
-                  cursor: isAdded
-                    ? isProcessing
-                      ? 'wait'
-                      : 'pointer'
-                    : 'pointer',
-                }}
-                className="space-y-2"
-                onClick={() => !isProcessing && handleToolClick(tool)}
-                onMouseEnter={() => setHoveredToolId(tool.id)}
-                onMouseLeave={() => setHoveredToolId(null)}
-              >
-                <div
-                  style={{
-                    filter: isAdded ? 'none' : 'grayscale(100%)',
-                    opacity: isAdded ? 1 : 0.6,
-                    transition: 'all 0.3s ease',
-                  }}
-                >
-                  <Image
-                    url={tool.logoUrl}
-                    width={64}
-                    height={64}
-                    className="rounded-full"
-                  />
+    <div className="mb-4 space-y-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-semibold">Pipeline</h2>
+          <Dialog open={isAddToolOpen} onOpenChange={setIsAddToolOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" disabled={isProcessing}>
+                <Plus />
+                Add tool
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Add tool</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <Input
+                  value={toolSearch}
+                  onChange={(event) => setToolSearch(event.target.value)}
+                  placeholder="Search tools"
+                />
+                <div className="max-h-[420px] overflow-auto rounded-md border">
+                  {availableTools.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-muted-foreground">
+                      No tools available
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {availableTools.map((tool) => (
+                        <button
+                          key={tool.id}
+                          type="button"
+                          className="flex w-full items-center gap-3 p-3 text-left hover:bg-secondary disabled:opacity-60"
+                          disabled={isProcessing}
+                          onClick={() => handleAddTool(tool)}
+                        >
+                          <Image
+                            url={tool.logoUrl}
+                            width={36}
+                            height={36}
+                            className="rounded-full"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium capitalize">
+                              {tool.name}
+                            </div>
+                            <div className="truncate text-xs text-muted-foreground">
+                              {tool.category}
+                            </div>
+                          </div>
+                          {isProcessing && (
+                            <Loader2Icon className="animate-spin" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {/* Show + icon on hover for unassigned tools */}
-                {!isAdded && isHovered && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '64px',
-                      height: '64px',
-                      borderRadius: '50%',
-                      backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'all 0.3s ease',
-                    }}
-                  >
-                    <Plus size={32} color="white" />
-                  </div>
-                )}
-                {/* Show indication for assigned tools */}
-                {isAdded && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '2px',
-                      right: '2px',
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '50%',
-                      backgroundColor: '#10b981',
-                      border: '2px solid white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
-                      color: 'white',
-                    }}
-                  >
-                    ✓
-                  </div>
-                )}
-                <div className="text-center capitalize">{tool.name}</div>
               </div>
-            );
-          })}
+            </DialogContent>
+          </Dialog>
         </div>
-        <div className="flex gap-2 justify-between">
+
+        <div className="flex gap-2">
           <ScanScheduleSelect
-            disabled={isPendingUpdateSchedule || !groupWorkflows?.data[0]?.id}
-            value={
-              groupWorkflows?.data[0]?.schedule as UpdateTargetDtoScanSchedule
-            }
+            disabled={isPendingUpdateSchedule || !currentGroupWorkflow?.id}
+            value={currentGroupWorkflow?.schedule as UpdateTargetDtoScanSchedule}
             onChange={(value: UpdateTargetDtoScanSchedule) => {
               updateAssetGroupWorkflowMutation(
                 {
-                  id: groupWorkflows?.data[0]?.id as string,
+                  id: currentGroupWorkflow?.id as string,
                   data: {
                     schedule: value,
                   },
@@ -343,8 +277,63 @@ export default function AssetGroupWorkflow({
               );
             }}
           />
-          <RunWorkflowButton id={getCurrentWorkflow()?.id} />
+          <RunWorkflowButton id={currentGroupWorkflow?.id} />
         </div>
+      </div>
+
+      <div className="rounded-md border p-3">
+        {scanTools.length === 0 ? (
+          <div className="py-4">
+            <Link
+              className="text-blue-500 italic flex items-center gap-1 hover:underline"
+              to={'/tools'}
+            >
+              Open Marketplace <MoveUpRight className="h-4 w-4" />
+            </Link>
+          </div>
+        ) : currentPipelineJobs.length === 0 ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            No tools in pipeline
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            {currentPipelineJobs.map((job, index) => {
+              const tool = toolByName.get(job.run);
+              return (
+                <div key={`${job.run}-${index}`} className="flex items-center">
+                  <div className="flex h-12 items-center gap-2 rounded-md border bg-background px-2">
+                    <Image
+                      url={tool?.logoUrl}
+                      width={28}
+                      height={28}
+                      className="rounded-full"
+                    />
+                    <span className="text-sm font-medium capitalize">
+                      {job.run}
+                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          disabled={isProcessing}
+                          onClick={() => handleRemoveTool(job.run)}
+                        >
+                          <X />
+                          <span className="sr-only">Remove {job.run}</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Remove</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  {index < currentPipelineJobs.length - 1 && (
+                    <ArrowRight className="mx-2 text-muted-foreground" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

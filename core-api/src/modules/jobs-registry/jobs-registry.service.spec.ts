@@ -37,6 +37,7 @@ describe('JobsRegistryService', () => {
     getOne: mockFn(),
     findOne: mockFn(),
     save: mockFn(),
+    update: mockFn(),
     count: mockFn(),
     exists: mockFn(),
   };
@@ -44,6 +45,7 @@ describe('JobsRegistryService', () => {
   const mockJobHistoryRepository = {
     createQueryBuilder: mockFn(),
     findOne: mockFn(),
+    save: mockFn(),
     update: mockFn(),
   };
 
@@ -494,6 +496,76 @@ describe('JobsRegistryService', () => {
     });
   });
 
+  describe('scan history controls', () => {
+    const mockWorkspaceId = 'workspace-uuid';
+    const mockHistoryId = 'history-uuid';
+
+    beforeEach(() => {
+      mockJobHistoryRepository.createQueryBuilder.mockReturnValue({
+        innerJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        getExists: mockFn().mockResolvedValue(true),
+      });
+    });
+
+    it('should stop a scan history by cancelling active and pending jobs', async () => {
+      mockJobRepository.update.mockResolvedValue({ affected: 3 });
+
+      const result = await service.stopJobHistory(
+        mockWorkspaceId,
+        mockHistoryId,
+      );
+
+      expect(mockJobRepository.update).toHaveBeenCalledWith(
+        {
+          jobHistory: { id: mockHistoryId },
+          status: expect.anything(),
+        },
+        {
+          status: JobStatus.CANCELLED,
+          workerId: undefined,
+        },
+      );
+      expect(result).toEqual({ message: 'Scan stopped successfully' });
+    });
+
+    it('should start a scan history by moving cancelled and failed jobs back to pending', async () => {
+      mockJobRepository.update.mockResolvedValue({ affected: 2 });
+
+      const result = await service.startJobHistory(
+        mockWorkspaceId,
+        mockHistoryId,
+      );
+
+      expect(mockJobRepository.update).toHaveBeenCalledWith(
+        {
+          jobHistory: { id: mockHistoryId },
+          status: expect.anything(),
+        },
+        {
+          status: JobStatus.PENDING,
+          workerId: undefined,
+          retryCount: expect.any(Function),
+        },
+      );
+      expect(result).toEqual({ message: 'Scan started successfully' });
+    });
+
+    it('should throw NotFoundException when stopping a scan history outside the workspace', async () => {
+      mockJobHistoryRepository.createQueryBuilder.mockReturnValue({
+        innerJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        getExists: mockFn().mockResolvedValue(false),
+      });
+
+      await expect(
+        service.stopJobHistory(mockWorkspaceId, mockHistoryId),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('getJobHistoryDetail', () => {
     const mockWorkspaceId = 'workspace-uuid';
     const mockHistoryId = 'history-uuid';
@@ -554,6 +626,7 @@ describe('JobsRegistryService', () => {
         createdAt: mockJobHistory.createdAt,
         updatedAt: mockJobHistory.updatedAt,
         tools: [{ name: 'test-tool' }],
+        pipelineToolNames: ['test-tool'],
         jobs: mockJobs,
       });
     });
@@ -577,6 +650,102 @@ describe('JobsRegistryService', () => {
 
       await expect(
         service.getJobHistoryDetail(mockWorkspaceId, mockHistoryId),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateJobHistoryPipeline', () => {
+    const mockWorkspaceId = 'workspace-uuid';
+    const mockHistoryId = 'history-uuid';
+    const mockWorkflow = {
+      id: 'workflow-uuid',
+      name: 'Pipeline workflow',
+      content: {
+        name: 'Pipeline workflow',
+        on: {
+          target: [],
+        },
+        jobs: [
+          { name: 'subfinder', run: 'subfinder' },
+          { name: 'nuclei', run: 'nuclei' },
+        ],
+      },
+    };
+    const mockJobHistory = {
+      id: mockHistoryId,
+      workflow: mockWorkflow,
+    };
+    const mockWorkflowRepository = {
+      save: mockFn(),
+    };
+
+    beforeEach(() => {
+      mockWorkflow.content.jobs = [
+        { name: 'subfinder', run: 'subfinder' },
+        { name: 'nuclei', run: 'nuclei' },
+      ];
+      mockJobHistoryRepository.findOne.mockResolvedValue(mockJobHistory);
+      mockJobHistoryRepository.createQueryBuilder.mockReturnValue({
+        innerJoin: mockFn().mockReturnThis(),
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        getExists: mockFn().mockResolvedValue(true),
+      });
+      mockToolsService.getInstalledTools.mockResolvedValue({
+        data: [
+          { id: 'tool-subfinder', name: 'subfinder' },
+          { id: 'tool-httpx', name: 'httpx' },
+        ],
+      });
+      mockDataSource.getRepository.mockReturnValue(mockWorkflowRepository);
+      mockWorkflowRepository.save.mockResolvedValue(mockWorkflow);
+      mockJobRepository.update.mockResolvedValue({ affected: 1 });
+    });
+
+    it('should replace the workflow pipeline with requested installed tools', async () => {
+      const result = await service.updateJobHistoryPipeline(
+        mockWorkspaceId,
+        mockHistoryId,
+        { toolNames: ['subfinder', 'httpx'] },
+      );
+
+      expect(mockJobHistoryRepository.findOne).toHaveBeenCalledWith({
+        where: { id: mockHistoryId },
+        relations: {
+          workflow: true,
+        },
+      });
+      expect(mockJobHistory.workflow.content.jobs).toEqual([
+        { name: 'subfinder', run: 'subfinder' },
+        { name: 'httpx', run: 'httpx' },
+      ]);
+      expect(mockWorkflowRepository.save).toHaveBeenCalledWith(mockWorkflow);
+      expect(result).toEqual({ message: 'Pipeline updated successfully' });
+    });
+
+    it('should cancel pending and active jobs for tools removed from the pipeline', async () => {
+      await service.updateJobHistoryPipeline(mockWorkspaceId, mockHistoryId, {
+        toolNames: ['subfinder'],
+      });
+
+      expect(mockJobRepository.update).toHaveBeenCalledWith(
+        {
+          jobHistory: { id: mockHistoryId },
+          tool: { name: expect.anything() },
+          status: expect.anything(),
+        },
+        {
+          status: JobStatus.CANCELLED,
+          workerId: undefined,
+        },
+      );
+    });
+
+    it('should reject tools that are not installed in the workspace', async () => {
+      await expect(
+        service.updateJobHistoryPipeline(mockWorkspaceId, mockHistoryId, {
+          toolNames: ['subfinder', 'missing-tool'],
+        }),
       ).rejects.toThrow(NotFoundException);
     });
   });

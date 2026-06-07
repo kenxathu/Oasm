@@ -37,6 +37,7 @@ import { Tool } from '../tools/entities/tools.entity';
 import { builtInTools } from '../tools/tools-provider/built-in-tools';
 import { ToolsService } from '../tools/tools.service';
 import { WorkerInstance } from '../workers/entities/worker.entity';
+import { Workflow } from '../workflows/entities/workflow.entity';
 import { GetManyJobsRequestDto } from './dto/get-many-jobs-dto';
 import { JobHistoryDetailResponseDto } from './dto/job-history-detail.dto';
 import { JobHistoryResponseDto } from './dto/job-history.dto';
@@ -47,6 +48,7 @@ import {
   JobTimelineItem,
   JobTimelineQueryResult,
   JobTimelineResponseDto,
+  UpdateJobHistoryPipelineDto,
   UpdateResultDto,
 } from './dto/jobs-registry.dto';
 import {
@@ -1092,7 +1094,9 @@ export class JobsRegistryService {
             CASE 
               WHEN COUNT(*) FILTER (WHERE status = '${JobStatus.FAILED}') > 0 THEN '${JobStatus.FAILED}'
               WHEN COUNT(*) FILTER (WHERE status = '${JobStatus.IN_PROGRESS}') > 0 THEN '${JobStatus.IN_PROGRESS}'
+              WHEN COUNT(*) FILTER (WHERE status = '${JobStatus.PENDING}') > 0 THEN '${JobStatus.PENDING}'
               WHEN COUNT(*) FILTER (WHERE status = '${JobStatus.COMPLETED}') = COUNT(*) AND COUNT(*) > 0 THEN '${JobStatus.COMPLETED}'
+              WHEN COUNT(*) FILTER (WHERE status = '${JobStatus.CANCELLED}') > 0 THEN '${JobStatus.CANCELLED}'
               ELSE '${JobStatus.PENDING}'
             END
           FROM jobs 
@@ -1201,6 +1205,7 @@ export class JobsRegistryService {
       createdAt,
       updatedAt,
       tools,
+      pipelineToolNames: workflow?.content?.jobs?.map((job) => job.run) ?? [],
       jobs: jobs || [],
     };
   }
@@ -1240,6 +1245,138 @@ export class JobsRegistryService {
       // For other errors (like database errors), re-throw them as-is
       throw error;
     }
+  }
+
+  private async verifyJobHistoryBelongsToWorkspace(
+    jobHistoryId: string,
+    workspaceId: string,
+  ): Promise<void> {
+    const belongsToWorkspace = await this.jobHistoryRepo
+      .createQueryBuilder('jobHistory')
+      .innerJoin('jobHistory.jobs', 'job')
+      .innerJoin('job.asset', 'asset')
+      .innerJoin('asset.target', 'target')
+      .innerJoin('target.workspaceTargets', 'workspaceTarget')
+      .innerJoin('workspaceTarget.workspace', 'workspace')
+      .where('jobHistory.id = :jobHistoryId', { jobHistoryId })
+      .andWhere('workspace.id = :workspaceId', { workspaceId })
+      .getExists();
+
+    if (!belongsToWorkspace) {
+      throw new NotFoundException('Job history not found in workspace');
+    }
+  }
+
+  public async stopJobHistory(
+    workspaceId: string,
+    jobHistoryId: string,
+  ): Promise<DefaultMessageResponseDto> {
+    await this.verifyJobHistoryBelongsToWorkspace(jobHistoryId, workspaceId);
+
+    await this.repo.update(
+      {
+        jobHistory: { id: jobHistoryId },
+        status: In([JobStatus.PENDING, JobStatus.IN_PROGRESS]),
+      },
+      {
+        status: JobStatus.CANCELLED,
+        workerId: undefined,
+      },
+    );
+
+    return { message: 'Scan stopped successfully' };
+  }
+
+  public async startJobHistory(
+    workspaceId: string,
+    jobHistoryId: string,
+  ): Promise<DefaultMessageResponseDto> {
+    await this.verifyJobHistoryBelongsToWorkspace(jobHistoryId, workspaceId);
+
+    await this.repo.update(
+      {
+        jobHistory: { id: jobHistoryId },
+        status: In([JobStatus.CANCELLED, JobStatus.FAILED]),
+      },
+      {
+        status: JobStatus.PENDING,
+        workerId: undefined,
+        retryCount: () => '"retryCount" + 1',
+      },
+    );
+
+    return { message: 'Scan started successfully' };
+  }
+
+  public async updateJobHistoryPipeline(
+    workspaceId: string,
+    jobHistoryId: string,
+    dto: UpdateJobHistoryPipelineDto,
+  ): Promise<DefaultMessageResponseDto> {
+    await this.verifyJobHistoryBelongsToWorkspace(jobHistoryId, workspaceId);
+
+    const jobHistory = await this.jobHistoryRepo.findOne({
+      where: { id: jobHistoryId },
+      relations: {
+        workflow: true,
+      },
+    });
+
+    if (!jobHistory?.workflow) {
+      throw new NotFoundException('Job history workflow not found');
+    }
+
+    const toolNames = dto.toolNames.map((name) => name.trim()).filter(Boolean);
+    const installedTools = await this.toolsService.getInstalledTools(
+      {},
+      workspaceId,
+    );
+    const installedToolNames = new Set(
+      installedTools.data.map((tool) => tool.name),
+    );
+    const missingToolNames = toolNames.filter(
+      (toolName) => !installedToolNames.has(toolName),
+    );
+
+    if (missingToolNames.length > 0) {
+      throw new NotFoundException(
+        `Tools not installed in workspace: ${missingToolNames.join(', ')}`,
+      );
+    }
+
+    const workflow = jobHistory.workflow;
+    const existingToolNames =
+      workflow.content?.jobs?.map((job) => job.run).filter(Boolean) ?? [];
+    const requestedToolNames = [...new Set(toolNames)];
+    const removedToolNames = existingToolNames.filter(
+      (toolName) => !requestedToolNames.includes(toolName),
+    );
+
+    workflow.content = {
+      ...workflow.content,
+      jobs: requestedToolNames.map((toolName) => ({
+        name: toolName,
+        run: toolName,
+      })),
+    };
+
+    await this.dataSource.getRepository(Workflow).save(workflow);
+
+    if (removedToolNames.length > 0) {
+      await this.repo.update(
+        {
+          jobHistory: { id: jobHistoryId },
+          tool: { name: In(removedToolNames) },
+          status: In([JobStatus.PENDING, JobStatus.IN_PROGRESS]),
+        },
+        {
+          status: JobStatus.CANCELLED,
+          workerId: undefined,
+        },
+      );
+    }
+
+    return { message: 'Pipeline updated successfully' };
   }
 
   public async reRunJob(

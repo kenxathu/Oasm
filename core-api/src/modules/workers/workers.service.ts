@@ -126,7 +126,7 @@ export class WorkersService {
       await this.workerLeave(worker.id);
     }
 
-    // Update both in_progress jobs with missing workers and failed jobs
+    // Release in-progress jobs whose worker disappeared.
     await this.resetStuckAndFailedJobs();
   }
 
@@ -473,25 +473,18 @@ export class WorkersService {
   }
 
   /**
-   * Resets stuck in_progress jobs (missing workers) and failed jobs (retryable) back to pending.
-   * This ensures jobs can be picked up by available workers.
+   * Resets stuck in_progress jobs with missing workers back to pending.
+   * Failed jobs stay failed so workflow fallback can continue with the next tool.
    */
   private async resetStuckAndFailedJobs() {
     await this.repo.manager.query(`
       UPDATE jobs j
-      SET status = CASE 
-          WHEN j.status = '${JobStatus.IN_PROGRESS}' AND j."workerId"::uuid NOT IN (
-            SELECT id FROM workers
-          ) THEN '${JobStatus.PENDING}'
-          WHEN j.status = '${JobStatus.FAILED}' AND j."retryCount" < 4 THEN '${JobStatus.PENDING}'
-          ELSE j.status
-        END,
+      SET status = '${JobStatus.PENDING}',
         "workerId" = NULL
       WHERE j.status = '${JobStatus.IN_PROGRESS}'
         AND j."workerId"::uuid NOT IN (
           SELECT id FROM workers
         )
-        OR j.status = '${JobStatus.FAILED}'
     `);
   }
 

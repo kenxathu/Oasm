@@ -125,6 +125,13 @@ export class JobResultProcessor extends WorkerHost {
           e,
         );
 
+        const nextStepJobCount =
+          await this.jobsRegistryService.getNextStepForJob(job);
+
+        if (nextStepJobCount === 0) {
+          await this.jobsRegistryService.markWorkflowDone(job.jobHistory.id);
+        }
+
         // Final failure: delete the result file
         try {
           await this.storageService.deleteFile(fileName, bucket);

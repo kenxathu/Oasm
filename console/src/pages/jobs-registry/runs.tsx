@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { CodeBlock } from '@/components/common/code-block';
 import Page from '@/components/common/page';
+import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DataTable } from '@/components/ui/data-table';
 import {
@@ -18,15 +19,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import Image from '@/components/ui/image';
+import { Input } from '@/components/ui/input';
 import JobStatusBadge from '@/components/ui/job-status';
-import type { Job } from '@/services/apis/gen/queries';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { updateJobHistoryPipeline } from '@/services/apis/jobs-registry';
+import type { Job, Tool } from '@/services/apis/gen/queries';
 import {
   JobStatus,
+  ToolCategory,
+  ToolsControllerGetManyToolsType,
   useJobsRegistryControllerCancelJob,
   useJobsRegistryControllerDeleteJob,
   useJobsRegistryControllerGetJobHistoryDetail,
+  useToolsControllerGetInstalledTools,
 } from '@/services/apis/gen/queries';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
   ArrowRight,
@@ -35,13 +46,21 @@ import {
   Clock,
   Loader2Icon,
   MoreHorizontal,
+  Plus,
   X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
+
+type JobHistoryDetailWithPipeline = {
+  pipelineToolNames?: string[];
+};
 
 export default function Runs() {
   const { id: jobHistoryId } = useParams<{ id: string }>();
   const [jobError, setJobError] = useState<Job | null>();
+  const [isAddToolOpen, setIsAddToolOpen] = useState(false);
+  const [toolSearch, setToolSearch] = useState('');
   const queryClient = useQueryClient();
   const { data: jobHistoryDetail } =
     useJobsRegistryControllerGetJobHistoryDetail(jobHistoryId || '', {
@@ -49,24 +68,94 @@ export default function Runs() {
         refetchInterval: 1000,
       },
     });
+  const { data: workspaceToolsInstalled } = useToolsControllerGetInstalledTools();
 
   const { mutate: deleteJobMutate } = useJobsRegistryControllerDeleteJob();
   const { mutate: cancelJobMutate } = useJobsRegistryControllerCancelJob();
+  const updatePipelineMutation = useMutation({
+    mutationFn: updateJobHistoryPipeline,
+    onSuccess: () => {
+      toast.success('Pipeline updated successfully');
+      void queryClient.invalidateQueries({
+        queryKey: [`/api/jobs-registry/histories/${jobHistoryId}`],
+      });
+    },
+    onError: () => toast.error('Failed to update pipeline'),
+  });
 
-  // Memoize jobs grouped by tool ID for efficient lookups
-  const jobsByToolId = useMemo(() => {
+  const jobHistoryPipeline = jobHistoryDetail as
+    | (typeof jobHistoryDetail & JobHistoryDetailWithPipeline)
+    | undefined;
+
+  const pipelineToolNames = useMemo(() => {
+    return (
+      jobHistoryPipeline?.pipelineToolNames ||
+      jobHistoryDetail?.tools?.map((tool) => tool.name) ||
+      []
+    );
+  }, [jobHistoryDetail?.tools, jobHistoryPipeline?.pipelineToolNames]);
+
+  const scanTools = useMemo(() => {
+    return (
+      workspaceToolsInstalled?.data?.filter(
+        (tool) =>
+          (tool.type === ToolsControllerGetManyToolsType.provider ||
+            tool.category !== ToolCategory.assistant) &&
+          tool.category !== ToolCategory.assistant,
+      ) || []
+    );
+  }, [workspaceToolsInstalled?.data]);
+
+  const toolsByName = useMemo(() => {
+    const tools = [...(jobHistoryDetail?.tools || []), ...scanTools];
+    return new Map(tools.map((tool) => [tool.name, tool]));
+  }, [jobHistoryDetail?.tools, scanTools]);
+
+  const availableTools = useMemo(() => {
+    const normalizedSearch = toolSearch.trim().toLowerCase();
+
+    return scanTools.filter((tool) => {
+      const alreadyInPipeline = pipelineToolNames.includes(tool.name);
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        tool.name.toLowerCase().includes(normalizedSearch) ||
+        tool.description?.toLowerCase().includes(normalizedSearch);
+
+      return !alreadyInPipeline && matchesSearch;
+    });
+  }, [pipelineToolNames, scanTools, toolSearch]);
+
+  const updatePipeline = (toolNames: string[]) => {
+    if (!jobHistoryId) return;
+
+    updatePipelineMutation.mutate({
+      id: jobHistoryId,
+      toolNames,
+    });
+  };
+
+  const addToolToPipeline = (tool: Tool) => {
+    updatePipeline([...pipelineToolNames, tool.name]);
+    setIsAddToolOpen(false);
+    setToolSearch('');
+  };
+
+  const removeToolFromPipeline = (toolName: string) => {
+    updatePipeline(pipelineToolNames.filter((name) => name !== toolName));
+  };
+
+  const jobsByToolName = useMemo(() => {
     if (!jobHistoryDetail?.jobs) return new Map<string, Job[]>();
     return jobHistoryDetail.jobs.reduce((acc, job) => {
-      // Check if job.tool exists before accessing its id property
       if (!job.tool) {
         console.warn(`Job ${job.id} has no tool assigned:`, job);
         return acc;
       }
-      const toolId = job.tool.id;
-      if (!acc.has(toolId)) {
-        acc.set(toolId, []);
+      const toolName = job.tool.name;
+      if (!acc.has(toolName)) {
+        acc.set(toolName, []);
       }
-      acc.get(toolId)!.push(job);
+      acc.get(toolName)!.push(job);
       return acc;
     }, new Map<string, Job[]>());
   }, [jobHistoryDetail?.jobs]);
@@ -200,10 +289,9 @@ export default function Runs() {
                         { id: row.original.id },
                         {
                           onSuccess: () => {
-                            queryClient.invalidateQueries({
+                            void queryClient.invalidateQueries({
                               queryKey: [
-                                'JobsRegistryControllerGetJobHistoryDetail',
-                                jobHistoryId,
+                                `/api/jobs-registry/histories/${jobHistoryId}`,
                               ],
                             });
                           },
@@ -225,10 +313,9 @@ export default function Runs() {
                       { id: row.original.id },
                       {
                         onSuccess: () => {
-                          queryClient.invalidateQueries({
+                          void queryClient.invalidateQueries({
                             queryKey: [
-                              'JobsRegistryControllerGetJobHistoryDetail',
-                              jobHistoryId,
+                              `/api/jobs-registry/histories/${jobHistoryId}`,
                             ],
                           });
                         },
@@ -253,18 +340,11 @@ export default function Runs() {
   ];
 
   const getToolStatus = useMemo(() => {
-    return (toolIndex: number) => {
-      const tools = jobHistoryDetail?.tools || [];
-
+    return (toolName: string, toolIndex: number) => {
       // Check if any previous tool in the workflow is still running or waiting
       for (let i = 0; i < toolIndex; i++) {
-        const prevTool = tools[i];
-        // Check if prevTool exists before accessing its id
-        if (!prevTool) {
-          console.warn(`Previous tool is undefined at index: ${i}`);
-          continue;
-        }
-        const prevToolJobs = jobsByToolId.get(prevTool.id) || [];
+        const prevToolName = pipelineToolNames[i];
+        const prevToolJobs = jobsByToolName.get(prevToolName) || [];
 
         if (prevToolJobs.length > 0) {
           const hasPrevRunning = prevToolJobs.some(
@@ -281,13 +361,7 @@ export default function Runs() {
       }
 
       // Check current tool jobs
-      const currentTool = tools[toolIndex];
-      // Check if currentTool exists before accessing its id
-      if (!currentTool) {
-        console.warn(`Current tool is undefined at index: ${toolIndex}`);
-        return 'pending';
-      }
-      const currentToolJobs = jobsByToolId.get(currentTool.id) || [];
+      const currentToolJobs = jobsByToolName.get(toolName) || [];
 
       // If current tool has no jobs yet, it's pending
       if (currentToolJobs.length === 0) return 'pending';
@@ -315,7 +389,7 @@ export default function Runs() {
       // Mixed statuses - some pending, some running, some completed
       return 'running';
     };
-  }, [jobHistoryDetail?.tools, jobsByToolId]);
+  }, [jobsByToolName, pipelineToolNames]);
 
   // Memoize sorted jobs to avoid sorting on every render
   const sortedJobs = useMemo(() => {
@@ -338,26 +412,51 @@ export default function Runs() {
         'Job History Detail'
       }
     >
-      {/* Tools Section */}
-      {jobHistoryDetail?.tools && jobHistoryDetail.tools.length > 0 && (
-        <div className="mb-6 p-4 border rounded-lg bg-card">
-          <h3 className="text-lg font-semibold mb-4">Pipeline</h3>
-          <div className="flex items-center gap-4 flex-wrap">
-            {jobHistoryDetail.tools.map((tool, index) => {
-              const status = getToolStatus(index);
+      <div className="mb-6 rounded-lg border bg-card p-4">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-lg font-semibold">Pipeline</h3>
+          <Button
+            size="sm"
+            disabled={updatePipelineMutation.isPending}
+            onClick={() => setIsAddToolOpen(true)}
+          >
+            <Plus />
+            Add tool
+          </Button>
+        </div>
+        {pipelineToolNames.length === 0 ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            No tools in pipeline
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            {pipelineToolNames.map((toolName, index) => {
+              const tool = toolsByName.get(toolName);
+              const status = getToolStatus(toolName, index);
+
               return (
-                <div key={tool.id} className="flex items-center gap-2">
-                  <Link
-                    to={`/tools/${tool.id}`}
-                    className="flex items-center gap-2 hover:opacity-80"
-                  >
-                    <Image
-                      url={tool.logoUrl}
-                      width={40}
-                      height={40}
-                      className="rounded-full border"
-                    />
-                    <span className="font-medium">{tool.name}</span>
+                <div key={`${toolName}-${index}`} className="flex items-center">
+                  <div className="flex h-12 items-center gap-2 rounded-md border bg-background px-2">
+                    {tool?.id ? (
+                      <Link
+                        to={`/tools/${tool.id}`}
+                        className="flex items-center gap-2 hover:opacity-80"
+                      >
+                        <Image
+                          url={tool.logoUrl}
+                          width={32}
+                          height={32}
+                          className="rounded-full border"
+                        />
+                        <span className="text-sm font-medium capitalize">
+                          {toolName}
+                        </span>
+                      </Link>
+                    ) : (
+                      <span className="text-sm font-medium capitalize">
+                        {toolName}
+                      </span>
+                    )}
                     {status === 'running' && (
                       <Loader2Icon className="animate-spin" />
                     )}
@@ -368,16 +467,80 @@ export default function Runs() {
                       <Clock className="text-yellow-500" />
                     )}
                     {status === 'failed' && <X className="text-red-500" />}
-                  </Link>
-                  {index < jobHistoryDetail.tools.length - 1 && (
-                    <ArrowRight className="text-muted-foreground" size={16} />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          disabled={updatePipelineMutation.isPending}
+                          onClick={() => removeToolFromPipeline(toolName)}
+                        >
+                          <X />
+                          <span className="sr-only">Remove {toolName}</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Remove</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  {index < pipelineToolNames.length - 1 && (
+                    <ArrowRight className="mx-2 text-muted-foreground" />
                   )}
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      <Dialog open={isAddToolOpen} onOpenChange={setIsAddToolOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add tool</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              value={toolSearch}
+              onChange={(event) => setToolSearch(event.target.value)}
+              placeholder="Search tools"
+            />
+            <div className="max-h-[420px] overflow-auto rounded-md border">
+              {availableTools.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">
+                  No tools available
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {availableTools.map((tool) => (
+                    <button
+                      key={tool.id}
+                      type="button"
+                      className="flex w-full items-center gap-3 p-3 text-left hover:bg-secondary disabled:opacity-60"
+                      disabled={updatePipelineMutation.isPending}
+                      onClick={() => addToolToPipeline(tool)}
+                    >
+                      <Image
+                        url={tool.logoUrl}
+                        width={36}
+                        height={36}
+                        className="rounded-full"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium capitalize">{tool.name}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {tool.category}
+                        </div>
+                      </div>
+                      {updatePipelineMutation.isPending && (
+                        <Loader2Icon className="animate-spin" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <DataTable
         isShowHeader={false}
