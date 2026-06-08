@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ConnectWorker } from '@/components/ui/connect-worker';
 import {
   Table,
   TableBody,
@@ -80,7 +81,11 @@ export function NetworkInterfacesTable({
     AxiosError<{ message: string }>,
     string
   >({
-    mutationFn: (id: string) => deleteNetworkInterface(networkId, id) as unknown as Promise<DefaultMessageResponseDto>,
+    mutationFn: (id: string) =>
+      deleteNetworkInterface(
+        networkId,
+        id,
+      ) as unknown as Promise<DefaultMessageResponseDto>,
     onSuccess: () => {
       toast.success('Network interface deleted');
       queryClient.invalidateQueries({
@@ -138,6 +143,11 @@ export function NetworkInterfacesTable({
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle>Network Interfaces</CardTitle>
         <div className="flex items-center gap-2">
+          <ConnectWorker
+            networkId={networkId}
+            triggerLabel="Auto detect"
+            triggerSize="sm"
+          />
           <AddNetworkInterfaceDialog
             networkId={networkId}
             onSuccess={() =>
@@ -151,10 +161,11 @@ export function NetworkInterfacesTable({
           <Button
             onClick={handleStartDiscovery}
             disabled={isPending || !hasSelectableItems}
-            variant={'outline'}
+            variant="outline"
             size="sm"
           >
-            <TargetIcon /> {isPending ? 'Starting...' : 'Start discovery'}
+            <TargetIcon data-icon="inline-start" />
+            {isPending ? 'Starting...' : 'Start discovery'}
           </Button>
         </div>
       </CardHeader>
@@ -196,9 +207,9 @@ export function NetworkInterfacesTable({
                   <TableCell>{item.interfaceName}</TableCell>
                   <TableCell>{item.ipAddress}</TableCell>
                   <TableCell>{item.cidr}</TableCell>
-                  <TableCell>{item.gatewayIp}</TableCell>
+                  <TableCell>{item.gatewayIp || '-'}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{item.gatewayMac}</Badge>
+                    <Badge variant="outline">{item.gatewayMac || '-'}</Badge>
                   </TableCell>
                   <TableCell>
                     {format(new Date(item.createdAt), 'PP')}
@@ -214,7 +225,7 @@ export function NetworkInterfacesTable({
                       disabled={deleteMutation.isPending}
                       className="text-red-600 hover:text-red-800"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 data-icon="button" />
                       <span className="sr-only">Delete interface</span>
                     </Button>
                   </TableCell>

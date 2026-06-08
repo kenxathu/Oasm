@@ -257,7 +257,7 @@ export class InternalNetworksService {
       cidr: string;
       gatewayIp: string;
       gatewayMac: string;
-      workerId: string;
+      workerId: string | null;
       createdAt: Date;
       updatedAt: Date;
       targetId: string | null;
@@ -270,7 +270,7 @@ export class InternalNetworksService {
       cidr: row.cidr,
       gatewayIp: row.gatewayIp,
       gatewayMac: row.gatewayMac,
-      workerId: row.workerId,
+      workerId: row.workerId || null,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
       targetId: row.targetId || null,
@@ -335,24 +335,26 @@ export class InternalNetworksService {
       user,
     );
 
-    const worker = await this.workerRepository.findOne({
-      where: {
-        id: dto.workerId,
-        workspaceId: internalNetwork.workspaceId,
-      },
-    });
+    if (dto.workerId) {
+      const worker = await this.workerRepository.findOne({
+        where: {
+          id: dto.workerId,
+          workspaceId: internalNetwork.workspaceId,
+        },
+      });
 
-    if (!worker) {
-      throw new NotFoundException('Worker not found');
+      if (!worker) {
+        throw new NotFoundException('Worker not found');
+      }
     }
 
     await this.networkInterfaceRepository.save({
       interfaceName: dto.interfaceName,
       ipAddress: dto.ipAddress,
       cidr: dto.cidr,
-      gatewayIp: dto.gatewayIp,
-      gatewayMac: dto.gatewayMac,
-      workerId: dto.workerId,
+      gatewayIp: dto.gatewayIp ?? '',
+      gatewayMac: dto.gatewayMac ?? '',
+      workerId: dto.workerId ?? null,
       internalNetworkId,
     });
 
@@ -579,7 +581,9 @@ export class InternalNetworksService {
     );
 
     if (!interfaces.length) {
-      throw new NotFoundException('No network interfaces found for the provided IDs');
+      throw new NotFoundException(
+        'No network interfaces found for the provided IDs',
+      );
     }
 
     const internalNetworkIds = Array.from(

@@ -1,3 +1,16 @@
+x-corporate-dns: &corporate-dns
+  - 10.29.81.151
+  - 10.29.81.152
+  - 10.29.81.153
+
+x-proxy-environment: &proxy-environment
+  HTTP_PROXY: "${HTTP_PROXY:-${http_proxy:-}}"
+  HTTPS_PROXY: "${HTTPS_PROXY:-${https_proxy:-}}"
+  http_proxy: "${http_proxy:-${HTTP_PROXY:-}}"
+  https_proxy: "${https_proxy:-${HTTPS_PROXY:-}}"
+  NO_PROXY: "${NO_PROXY:-localhost,127.0.0.1,::1,console,core-api,oasm-api,oasm-worker,postgres,redis,geo-ip,rustfs,migration,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.baoviet.com}"
+  no_proxy: "${no_proxy:-${NO_PROXY:-localhost,127.0.0.1,::1,console,core-api,oasm-api,oasm-worker,postgres,redis,geo-ip,rustfs,migration,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.baoviet.com}}"
+
 services:
   console:
     container_name: console
@@ -7,8 +20,11 @@ services:
       dockerfile: ./console/Dockerfile
     networks:
       - oasm
+    dns: *corporate-dns
     env_file:
       - ./console/.env
+    environment:
+      <<: *proxy-environment
     ports:
       - '3000:80'
     restart: 'always'
@@ -30,6 +46,7 @@ services:
       dockerfile: Dockerfile
     networks:
       - oasm
+    dns: *corporate-dns
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     env_file:
@@ -38,11 +55,12 @@ services:
       - '6276:6276'
       - '16276:16276'
     environment:
-      - POSTGRES_HOST=postgres
-      - REDIS_URL=redis://:password@redis:6379/0
-      - GEO_IP_URL=geo-ip:4360
-      - OASM_CLOUD_APIKEY=change_me
-      - RUSTFS_ENDPOINT=http://rustfs:9000
+      <<: *proxy-environment
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://:password@redis:6379/0
+      GEO_IP_URL: geo-ip:4360
+      OASM_CLOUD_APIKEY: change_me
+      RUSTFS_ENDPOINT: http://rustfs:9000
     restart: 'always'
     logging:
       driver: json-file
@@ -74,11 +92,12 @@ services:
     env_file:
       - ./worker/.env
     environment:
-      - WORKER_API_KEY=change_me
-      - WORKER_GRPC_HOST=core-api
-      - WORKER_GRPC_PORT=16276
-      - WORKER_MAX_CONCURRENCY=10
-      - WORKER_TOOL_PATH=/app/oasm-tools
+      <<: *proxy-environment
+      WORKER_API_KEY: change_me
+      WORKER_GRPC_HOST: core-api
+      WORKER_GRPC_PORT: 16276
+      WORKER_MAX_CONCURRENCY: 10
+      WORKER_TOOL_PATH: /app/oasm-tools
     logging:
       driver: json-file
       options:
@@ -88,6 +107,7 @@ services:
       - worker-tools-cache:/app/oasm-tools:rw
     networks:
       - oasm
+    dns: *corporate-dns
     restart: 'always'
     depends_on:
       core-api:
@@ -117,6 +137,7 @@ services:
       - '${POSTGRES_PORT:-5432}:5432'
     networks:
       - oasm
+    dns: *corporate-dns
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready']
       interval: 1s
@@ -131,6 +152,7 @@ services:
       - '6379:6379'
     networks:
       - oasm
+    dns: *corporate-dns
     logging:
       driver: json-file
       options:
@@ -159,6 +181,9 @@ services:
     image: ghcr.io/l1ttps/geoip-proxy:latest
     networks:
       - oasm
+    dns: *corporate-dns
+    environment:
+      <<: *proxy-environment
     ports:
       - '4360:4360'
     restart: 'always'
@@ -170,12 +195,13 @@ services:
     image: rustfs/rustfs:latest
     networks:
       - oasm
+    dns: *corporate-dns
     ports:
       - '9000:9000'
       - '9001:9001'
     environment:
-      - RUSTFS_ACCESS_KEY=rustfsadmin
-      - RUSTFS_SECRET_KEY=rustfssecret
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfssecret
     volumes:
       - rustfs-data:/data:rw
     restart: 'always'
@@ -191,15 +217,17 @@ services:
     image: oasm/oasm-api:latest
     networks:
       - oasm
+    dns: *corporate-dns
     env_file:
       - ./core-api/.env
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USERNAME=${POSTGRES_USERNAME:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DB:-open_asm}
-      - REDIS_URL=redis://:password@redis:6379/0
+      <<: *proxy-environment
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USERNAME: ${POSTGRES_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-open_asm}
+      REDIS_URL: redis://:password@redis:6379/0
     logging:
       driver: json-file
       options:

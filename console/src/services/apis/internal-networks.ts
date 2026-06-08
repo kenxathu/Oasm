@@ -4,9 +4,9 @@ export type CreateNetworkInterfaceDto = {
   interfaceName: string;
   ipAddress: string;
   cidr: string;
-  gatewayIp: string;
-  gatewayMac: string;
-  workerId: string;
+  gatewayIp?: string;
+  gatewayMac?: string;
+  workerId?: string;
 };
 
 export type UpdateNetworkInterfaceDto = Partial<CreateNetworkInterfaceDto>;

@@ -42,9 +42,11 @@ export class NetworkInterfaceResponseDto {
 
   @ApiProperty({
     description: 'The ID of the worker this interface belongs to',
+    nullable: true,
   })
+  @IsOptional()
   @IsUUID('4')
-  workerId: string;
+  workerId: string | null;
 
   @ApiProperty({
     description: 'The ID of the target associated with this network interface, if any',

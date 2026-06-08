@@ -385,6 +385,118 @@ describe('DependencyTrackService', () => {
     });
   });
 
+  it('waits for token processing before resolving an auto-created project', async () => {
+    let lookupAttempts = 0;
+    const requestOrder: string[] = [];
+    const httpGet = jest.fn((url: string) => {
+      if (url === '/api/v1/project') {
+        return of({ data: [] });
+      }
+
+      if (url === '/api/v1/event/token/upload-token') {
+        requestOrder.push('event');
+        return of({ data: { processing: false } });
+      }
+
+      if (url === '/api/v1/project/lookup') {
+        lookupAttempts += 1;
+        requestOrder.push('lookup');
+
+        if (!requestOrder.includes('event')) {
+          return throwError(() => new Error('project is not indexed yet'));
+        }
+
+        return of({
+          data: {
+            uuid: 'resolved-project',
+            name: 'eclaimtrivy',
+            version: 'latest',
+          },
+        });
+      }
+
+      if (url === '/api/v1/finding/project/resolved-project/export') {
+        return of({
+          data: {
+            findings: [
+              {
+                vulnerability: {
+                  vulnId: 'CVE-2026-0004',
+                  name: 'Delayed processed vulnerability',
+                  description: 'Delayed processed vulnerability description',
+                  severity: 'CRITICAL',
+                },
+                component: {
+                  name: 'delayed-lib',
+                  version: '4.0.0',
+                },
+              },
+            ],
+          },
+        });
+      }
+
+      return of({ data: {} });
+    });
+    const { service } = createService({
+      config: {
+        ...dependencyTrackConfig,
+        DEPENDENCY_TRACK_BOM_PROCESSING_POLL_INTERVAL_MS: '1',
+      },
+      get: httpGet,
+      post: jest.fn(() =>
+        of({
+          data: {
+            token: 'upload-token',
+          },
+        }),
+      ),
+    });
+    const file = {
+      originalname: 'bom_new1.json',
+      mimetype: 'application/json',
+      buffer: Buffer.from(
+        JSON.stringify({
+          bomFormat: 'CycloneDX',
+          specVersion: '1.5',
+          metadata: {
+            component: {
+              type: 'container',
+              name: 'eclaimtrivy',
+              version: '',
+            },
+          },
+          components: [],
+          dependencies: [],
+        }),
+      ),
+    } as Express.Multer.File;
+
+    const result = await service.checkSbomFileVulnerabilities(file);
+
+    expect(httpGet).toHaveBeenCalledWith('/api/v1/event/token/upload-token');
+    expect(httpGet).toHaveBeenCalledWith('/api/v1/project/lookup', {
+      params: {
+        name: 'eclaimtrivy',
+        version: 'latest',
+      },
+    });
+    expect(lookupAttempts).toBe(1);
+    expect(requestOrder).toEqual(['event', 'lookup']);
+    expect(result).toMatchObject({
+      projectUuid: 'resolved-project',
+      vulnerabilities: [
+        {
+          id: 'CVE-2026-0004',
+          name: 'Delayed processed vulnerability',
+          severity: 'CRITICAL',
+          component: 'delayed-lib',
+          version: '4.0.0',
+        },
+      ],
+    });
+  });
+
   it('rejects uploaded SBOM files that are not JSON files', async () => {
     const { service } = createService({
       config: dependencyTrackConfig,

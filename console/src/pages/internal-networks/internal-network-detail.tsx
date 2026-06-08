@@ -1,7 +1,6 @@
 import Page from '@/components/common/page';
 import { NetworkInterfacesTable } from '@/components/internal-networks/network-interfaces-table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ConnectWorker } from '@/components/ui/connect-worker';
 import {
   useInternalNetworksControllerDeleteInternalNetwork,
   useInternalNetworksControllerGetInternalNetworkById,
@@ -63,15 +62,19 @@ export default function InternalNetworkDetail() {
             confirmText="Delete"
             typeToConfirm={network.name}
             trigger={
-              <Button variant="ghost" size="icon" className="text-red-600 hover:text-red-800">
-                <Trash2 className="h-4 w-4" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-red-600 hover:text-red-800"
+              >
+                <Trash2 data-icon="button" />
               </Button>
             }
           />
         </div>
       }
     >
-      <div className="space-y-6">
+      <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Network Information</CardTitle>
@@ -97,8 +100,6 @@ export default function InternalNetworkDetail() {
             </div>
           </CardContent>
         </Card>
-
-        <ConnectWorker networkId={network.id} />
 
         <VulnerabilityScanScheduleCard
           networkId={network.id}
