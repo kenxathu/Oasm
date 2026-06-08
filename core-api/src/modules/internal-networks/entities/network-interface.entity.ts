@@ -9,14 +9,15 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, Unique } from 'typeorm';
 @Index('IDX_ni_workerId', ['worker'])
 export class NetworkInterface extends BaseEntity {
   @ApiProperty()
-  @Column({ type: 'uuid' })
-  workerId: string;
+  @Column({ type: 'uuid', nullable: true })
+  workerId: string | null;
 
   @ManyToOne(() => WorkerInstance, (worker) => worker.networkInterfaces, {
     onDelete: 'CASCADE',
+    nullable: true,
   })
   @JoinColumn({ name: 'workerId' })
-  worker: WorkerInstance;
+  worker: WorkerInstance | null;
 
   @ApiProperty()
   @Column('text')

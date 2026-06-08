@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui/button';
+import { Button, type ButtonProps } from '@/components/ui/button';
 import {
   Dialog,
   DialogClose,
@@ -21,8 +21,12 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from './confirm-dialog';
 import { buildWorkerCommand } from './worker-command';
+
 interface ConnectWorkerProps {
   networkId?: string;
+  triggerLabel?: string;
+  triggerSize?: ButtonProps['size'];
+  triggerVariant?: ButtonProps['variant'];
 }
 
 const MIN_WORKER_COUNT = 1;
@@ -41,7 +45,12 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-export function ConnectWorker({ networkId }: ConnectWorkerProps) {
+export function ConnectWorker({
+  networkId,
+  triggerLabel = 'Connect worker',
+  triggerSize = 'default',
+  triggerVariant = 'secondary',
+}: ConnectWorkerProps) {
   const {
     state: { selectedWorkspaceId },
   } = useWorkspaceState();
@@ -54,6 +63,7 @@ export function ConnectWorker({ networkId }: ConnectWorkerProps) {
   const [open, setOpen] = useState(false);
   const [workerCount, setWorkerCount] = useState(1);
   const [maxJobs, setMaxJobs] = useState(10);
+  const shouldHideTriggerLabelOnMobile = triggerLabel === 'Connect worker';
 
   const rawCommand = useMemo(
     () =>
@@ -97,9 +107,15 @@ export function ConnectWorker({ networkId }: ConnectWorkerProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary" className="gap-2">
-          <SquareTerminal className="shrink-0" />
-          <span className="hidden lg:inline">Connect worker</span>
+        <Button variant={triggerVariant} size={triggerSize}>
+          <SquareTerminal data-icon="inline-start" />
+          <span
+            className={
+              shouldHideTriggerLabelOnMobile ? 'hidden lg:inline' : undefined
+            }
+          >
+            {triggerLabel}
+          </span>
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -109,9 +125,9 @@ export function ConnectWorker({ networkId }: ConnectWorkerProps) {
             Copy and paste the following code and API key into your worker:
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="worker-count">Workers</Label>
               <div className="flex items-center gap-2">
                 <Button
@@ -122,7 +138,7 @@ export function ConnectWorker({ networkId }: ConnectWorkerProps) {
                   disabled={workerCount <= MIN_WORKER_COUNT}
                   onClick={() => handleWorkerCountChange(workerCount - 1)}
                 >
-                  <Minus className="h-4 w-4" />
+                  <Minus data-icon="button" />
                 </Button>
                 <Input
                   id="worker-count"
@@ -144,11 +160,11 @@ export function ConnectWorker({ networkId }: ConnectWorkerProps) {
                   disabled={workerCount >= MAX_WORKER_COUNT}
                   onClick={() => handleWorkerCountChange(workerCount + 1)}
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus data-icon="button" />
                 </Button>
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="worker-max-jobs">Jobs per worker</Label>
               <Input
                 id="worker-max-jobs"
@@ -162,18 +178,6 @@ export function ConnectWorker({ networkId }: ConnectWorkerProps) {
               />
             </div>
           </div>
-          {/* <p>API Key:</p>
-                    <div className="relative bg-black text-white font-mono rounded-md p-4 text-sm">
-                        <pre className="whitespace-pre-wrap">{apiKey}</pre>
-                        <Button
-                            onClick={handleCopyApiKey}
-                            size="icon"
-                            variant="ghost"
-                            className="absolute top-2 right-2 text-white hover:text-gray-300"
-                        >
-                            <Copy size={16} />
-                        </Button>
-                    </div> */}
           <div className="relative bg-black text-white font-mono rounded-md p-4 text-sm">
             <pre className="whitespace-pre-wrap">{rawCommand}</pre>
             <Button
@@ -182,7 +186,7 @@ export function ConnectWorker({ networkId }: ConnectWorkerProps) {
               variant="ghost"
               className="absolute top-2 right-2 text-white hover:text-gray-300"
             >
-              <Copy size={16} />
+              <Copy data-icon="button" />
             </Button>
           </div>
         </div>

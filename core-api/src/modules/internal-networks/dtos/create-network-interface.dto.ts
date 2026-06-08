@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsUUID } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateNetworkInterfaceDto {
   @ApiProperty({ description: 'The name of the network interface' })
@@ -17,17 +17,24 @@ export class CreateNetworkInterfaceDto {
   @IsNotEmpty()
   cidr: string;
 
-  @ApiProperty({ description: 'The gateway IP address for the network interface' })
+  @ApiPropertyOptional({
+    description: 'The gateway IP address for the network interface',
+  })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  gatewayIp: string;
+  gatewayIp?: string;
 
-  @ApiProperty({ description: 'The gateway MAC address for the network interface' })
+  @ApiPropertyOptional({
+    description: 'The gateway MAC address for the network interface',
+  })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  gatewayMac: string;
+  gatewayMac?: string;
 
-  @ApiProperty({ description: 'The worker ID associated with this network interface' })
+  @ApiPropertyOptional({
+    description: 'The worker ID associated with this network interface',
+  })
+  @IsOptional()
   @IsUUID('4')
-  workerId: string;
+  workerId?: string;
 }

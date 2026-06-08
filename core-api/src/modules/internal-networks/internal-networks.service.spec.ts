@@ -13,9 +13,7 @@ import { ToolsService } from '../tools/tools.service';
 import { WorkflowsService } from '../workflows/workflows.service';
 import type { CreateInternalNetworkDto } from './dtos/create-internal-network.dto';
 import type { GetManyInternalNetworksQueryDto } from './dtos/get-many-internal-networks.dto';
-import type {
-  GetManyNetworkInterfacesQueryDto,
-} from './dtos/get-many-network-interfaces.dto';
+import type { GetManyNetworkInterfacesQueryDto } from './dtos/get-many-network-interfaces.dto';
 import type { UpdateInternalNetworkDto } from './dtos/update-internal-network.dto';
 import { InternalNetwork } from './entities/internal-network.entity';
 import { NetworkInterface } from './entities/network-interface.entity';
@@ -70,7 +68,9 @@ describe('InternalNetworksService', () => {
               orderBy: jest.fn().mockReturnThis(),
               skip: jest.fn().mockReturnThis(),
               take: jest.fn().mockReturnThis(),
-              getRawAndEntities: jest.fn().mockResolvedValue({ entities: [], raw: [] }),
+              getRawAndEntities: jest
+                .fn()
+                .mockResolvedValue({ entities: [], raw: [] }),
               getCount: jest.fn().mockResolvedValue(0),
             }),
           },
@@ -187,7 +187,8 @@ describe('InternalNetworksService', () => {
         vulnerabilityScanJobId: 'repeat-key',
       });
       expect(result).toEqual({
-        message: 'Internal network vulnerability scan schedule updated successfully',
+        message:
+          'Internal network vulnerability scan schedule updated successfully',
       });
     });
 
@@ -478,7 +479,9 @@ describe('InternalNetworksService', () => {
       expect(result.total).toBe(total);
       expect(result.page).toBe(1);
       expect(result.limit).toBe(10);
-      expect(internalNetworkRepo.createQueryBuilder).toHaveBeenCalledWith('network');
+      expect(internalNetworkRepo.createQueryBuilder).toHaveBeenCalledWith(
+        'network',
+      );
     });
 
     it('should filter by search on name when provided', async () => {
@@ -499,7 +502,9 @@ describe('InternalNetworksService', () => {
         orderBy: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
-        getRawAndEntities: jest.fn().mockResolvedValue({ entities: [], raw: [] }),
+        getRawAndEntities: jest
+          .fn()
+          .mockResolvedValue({ entities: [], raw: [] }),
         getCount: jest.fn().mockResolvedValue(0),
       };
       jest
@@ -544,7 +549,7 @@ describe('InternalNetworksService', () => {
       jest
         .spyOn(internalNetworkRepo, 'findOne')
         .mockResolvedValue(internalNetwork as any);
-      
+
       const qb = {
         leftJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
@@ -556,7 +561,9 @@ describe('InternalNetworksService', () => {
         getRawMany: jest.fn().mockResolvedValue(interfaces),
         getCount: jest.fn().mockResolvedValue(total),
       };
-      jest.spyOn(networkInterfaceRepo, 'createQueryBuilder').mockReturnValue(qb as any);
+      jest
+        .spyOn(networkInterfaceRepo, 'createQueryBuilder')
+        .mockReturnValue(qb as any);
 
       const result = await service.getManyNetworkInterfaces(
         internalNetworkId,
@@ -588,7 +595,7 @@ describe('InternalNetworksService', () => {
       jest
         .spyOn(internalNetworkRepo, 'findOne')
         .mockResolvedValue(internalNetwork as any);
-      
+
       const qb = {
         leftJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
@@ -601,7 +608,9 @@ describe('InternalNetworksService', () => {
         getRawMany: jest.fn().mockResolvedValue([]),
         getCount: jest.fn().mockResolvedValue(0),
       };
-      jest.spyOn(networkInterfaceRepo, 'createQueryBuilder').mockReturnValue(qb as any);
+      jest
+        .spyOn(networkInterfaceRepo, 'createQueryBuilder')
+        .mockReturnValue(qb as any);
 
       await service.getManyNetworkInterfaces(
         internalNetworkId,
@@ -622,9 +631,9 @@ describe('InternalNetworksService', () => {
 
       jest.spyOn(internalNetworkRepo, 'findOne').mockResolvedValue(null);
 
-      await expect(service.getManyNetworkInterfaces(internalNetworkId, query, workspaceId)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.getManyNetworkInterfaces(internalNetworkId, query, workspaceId),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -640,7 +649,9 @@ describe('InternalNetworksService', () => {
         creator: { id: randomUUID(), name: 'User', image: 'img.jpg' },
       };
 
-      jest.spyOn(internalNetworkRepo, 'findOne').mockResolvedValue(network as any);
+      jest
+        .spyOn(internalNetworkRepo, 'findOne')
+        .mockResolvedValue(network as any);
 
       const result = await service.getInternalNetworkById(id, workspaceId);
 
@@ -668,7 +679,9 @@ describe('InternalNetworksService', () => {
 
       jest.spyOn(internalNetworkRepo, 'findOne').mockResolvedValue(null);
 
-      await expect(service.getInternalNetworkById(id, workspaceId)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.getInternalNetworkById(id, workspaceId),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -717,12 +730,54 @@ describe('InternalNetworksService', () => {
       });
     });
 
+    it('should create a manually entered network interface without a worker', async () => {
+      const internalNetworkId = randomUUID();
+      const workspaceId = randomUUID();
+      const user = { id: randomUUID() };
+      const dto = {
+        interfaceName: 'Manual network',
+        ipAddress: '10.20.30.0',
+        cidr: '10.20.30.0/24',
+      };
+
+      jest
+        .spyOn(internalNetworkRepo, 'findOne')
+        .mockResolvedValue({ id: internalNetworkId, workspaceId } as any);
+      jest
+        .spyOn(workspacesService, 'getWorkspaceByIdAndOwner')
+        .mockResolvedValue({} as any);
+      jest.spyOn(networkInterfaceRepo, 'save').mockResolvedValue({} as any);
+
+      const result = await service.createNetworkInterface(
+        internalNetworkId,
+        dto as any,
+        user as any,
+      );
+
+      expect(workerRepository.findOne).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        message: 'Network interface created successfully',
+      });
+      expect(networkInterfaceRepo.save).toHaveBeenCalledWith({
+        interfaceName: dto.interfaceName,
+        ipAddress: dto.ipAddress,
+        cidr: dto.cidr,
+        gatewayIp: '',
+        gatewayMac: '',
+        workerId: null,
+        internalNetworkId,
+      });
+    });
+
     it('should update a network interface successfully', async () => {
       const internalNetworkId = randomUUID();
       const id = randomUUID();
       const user = { id: randomUUID() };
       const dto = { ipAddress: '10.0.0.25' };
-      const internalNetwork = { id: internalNetworkId, workspaceId: randomUUID() };
+      const internalNetwork = {
+        id: internalNetworkId,
+        workspaceId: randomUUID(),
+      };
       const networkInterface = {
         id,
         internalNetworkId,
@@ -738,7 +793,9 @@ describe('InternalNetworksService', () => {
       jest
         .spyOn(networkInterfaceRepo, 'findOne')
         .mockResolvedValue(networkInterface as any);
-      jest.spyOn(networkInterfaceRepo, 'save').mockResolvedValue(networkInterface as any);
+      jest
+        .spyOn(networkInterfaceRepo, 'save')
+        .mockResolvedValue(networkInterface as any);
 
       const result = await service.updateNetworkInterfaceById(
         internalNetworkId,
@@ -763,7 +820,10 @@ describe('InternalNetworksService', () => {
       const internalNetworkId = randomUUID();
       const id = randomUUID();
       const user = { id: randomUUID() };
-      const internalNetwork = { id: internalNetworkId, workspaceId: randomUUID() };
+      const internalNetwork = {
+        id: internalNetworkId,
+        workspaceId: randomUUID(),
+      };
       const networkInterface = { id, internalNetworkId };
 
       jest
@@ -775,7 +835,9 @@ describe('InternalNetworksService', () => {
       jest
         .spyOn(networkInterfaceRepo, 'findOne')
         .mockResolvedValue(networkInterface as any);
-      jest.spyOn(networkInterfaceRepo, 'remove').mockResolvedValue(networkInterface as any);
+      jest
+        .spyOn(networkInterfaceRepo, 'remove')
+        .mockResolvedValue(networkInterface as any);
 
       const result = await service.deleteNetworkInterface(
         internalNetworkId,
@@ -786,7 +848,9 @@ describe('InternalNetworksService', () => {
       expect(result).toEqual({
         message: 'Network interface deleted successfully',
       });
-      expect(networkInterfaceRepo.remove).toHaveBeenCalledWith(networkInterface as any);
+      expect(networkInterfaceRepo.remove).toHaveBeenCalledWith(
+        networkInterface as any,
+      );
     });
   });
 });

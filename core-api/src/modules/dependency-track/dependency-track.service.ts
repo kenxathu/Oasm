@@ -370,15 +370,15 @@ export class DependencyTrackService implements OnModuleInit {
       uploadResponse.data?.findings ||
       [];
 
+    const processed = uploadToken
+      ? await this.waitForBomProcessing(uploadToken).catch(() => false)
+      : false;
     const resolvedProjectUuid =
       projectUuid ||
       (await this.resolveUploadedProjectUuid(projectFields).catch(
         () => undefined,
       ));
-    const processed =
-      uploadToken && resolvedProjectUuid
-        ? await this.waitForBomProcessing(uploadToken).catch(() => false)
-        : false;
+
     const resolvedRawVulnerabilities =
       rawVulnerabilities.length > 0
         ? rawVulnerabilities
