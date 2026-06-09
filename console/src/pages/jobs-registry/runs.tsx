@@ -44,6 +44,7 @@ import {
   Calendar,
   CircleCheck,
   Clock,
+  Lock,
   Loader2Icon,
   MoreHorizontal,
   Plus,
@@ -55,6 +56,22 @@ import { toast } from 'sonner';
 type JobHistoryDetailWithPipeline = {
   pipelineToolNames?: string[];
 };
+<<<<<<< HEAD
+=======
+
+const DEFAULT_PIPELINE_TOOL_NAMES = ['subfinder', 'naabu', 'httpx'];
+
+const withDefaultPipelineTools = (toolNames: string[]) => {
+  const uniqueToolNames = [...new Set(toolNames)];
+
+  return [
+    ...DEFAULT_PIPELINE_TOOL_NAMES,
+    ...uniqueToolNames.filter(
+      (toolName) => !DEFAULT_PIPELINE_TOOL_NAMES.includes(toolName),
+    ),
+  ];
+};
+>>>>>>> main
 
 export default function Runs() {
   const { id: jobHistoryId } = useParams<{ id: string }>();
@@ -88,10 +105,17 @@ export default function Runs() {
     | undefined;
 
   const pipelineToolNames = useMemo(() => {
+<<<<<<< HEAD
     return (
       jobHistoryPipeline?.pipelineToolNames ||
       jobHistoryDetail?.tools?.map((tool) => tool.name) ||
       []
+=======
+    return withDefaultPipelineTools(
+      jobHistoryPipeline?.pipelineToolNames ||
+        jobHistoryDetail?.tools?.map((tool) => tool.name) ||
+        [],
+>>>>>>> main
     );
   }, [jobHistoryDetail?.tools, jobHistoryPipeline?.pipelineToolNames]);
 
@@ -141,6 +165,11 @@ export default function Runs() {
   };
 
   const removeToolFromPipeline = (toolName: string) => {
+<<<<<<< HEAD
+=======
+    if (DEFAULT_PIPELINE_TOOL_NAMES.includes(toolName)) return;
+
+>>>>>>> main
     updatePipeline(pipelineToolNames.filter((name) => name !== toolName));
   };
 
@@ -433,6 +462,11 @@ export default function Runs() {
             {pipelineToolNames.map((toolName, index) => {
               const tool = toolsByName.get(toolName);
               const status = getToolStatus(toolName, index);
+<<<<<<< HEAD
+=======
+              const isDefaultTool =
+                DEFAULT_PIPELINE_TOOL_NAMES.includes(toolName);
+>>>>>>> main
 
               return (
                 <div key={`${toolName}-${index}`} className="flex items-center">
@@ -467,6 +501,7 @@ export default function Runs() {
                       <Clock className="text-yellow-500" />
                     )}
                     {status === 'failed' && <X className="text-red-500" />}
+<<<<<<< HEAD
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -481,6 +516,33 @@ export default function Runs() {
                       </TooltipTrigger>
                       <TooltipContent>Remove</TooltipContent>
                     </Tooltip>
+=======
+                    {isDefaultTool ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex h-6 w-6 items-center justify-center text-muted-foreground">
+                            <Lock className="h-3.5 w-3.5" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>Default tool</TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            disabled={updatePipelineMutation.isPending}
+                            onClick={() => removeToolFromPipeline(toolName)}
+                          >
+                            <X />
+                            <span className="sr-only">Remove {toolName}</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Remove</TooltipContent>
+                      </Tooltip>
+                    )}
+>>>>>>> main
                   </div>
                   {index < pipelineToolNames.length - 1 && (
                     <ArrowRight className="mx-2 text-muted-foreground" />

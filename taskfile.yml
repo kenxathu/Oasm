@@ -69,11 +69,11 @@ tasks:
 
   # Docker Compose orchestration
   # Starts all services using docker compose with environment variables
-  # Builds and recreates containers with 3 worker instances
+  # Builds and recreates containers with configurable worker instances
   docker-compose:
     cmds:
       - |
-        docker compose --env-file ./core-api/.env up -d --build --force-recreate --scale worker=3
+        docker compose --env-file ./core-api/.env up -d --build --force-recreate
 
   proto:
     cmds:

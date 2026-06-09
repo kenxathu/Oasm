@@ -82,6 +82,18 @@ export class JobHistoryResponseDto {
 
   @ApiProperty({ enum: JobRunType })
   jobRunType?: JobRunType;
+
+  @ApiProperty({ required: false })
+  targetId?: string;
+
+  @ApiProperty({ required: false })
+  targetValue?: string;
+
+  @ApiProperty({ required: false })
+  targetType?: string;
+
+  @ApiProperty({ type: Number, required: false })
+  targetCount?: number;
 }
 
 export class GetManyJobHistoriesResponseDto extends GetManyBaseResponseDto<JobHistoryResponseDto> {}
