@@ -1,10 +1,20 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { Logger } from '@nestjs/common';
+import type { AxiosProxyConfig } from 'axios';
 import type { ConfigService } from '@nestjs/config';
 import type { SchedulerRegistry } from '@nestjs/schedule';
 import { of, throwError } from 'rxjs';
 import { DependencyTrackService } from './dependency-track.service';
 
 describe('DependencyTrackService', () => {
+  type MockAxiosDefaults = {
+    baseURL?: string;
+    proxy?: AxiosProxyConfig | false;
+    headers: {
+      common: Record<string, string>;
+    };
+  };
+
   const flushPromises = () =>
     new Promise<void>((resolve) => {
       setImmediate(resolve);
@@ -68,6 +78,12 @@ describe('DependencyTrackService', () => {
         return of({ data: { status: 'UP' } });
       });
 
+    const httpDefaults: MockAxiosDefaults = {
+      headers: {
+        common: {},
+      },
+    };
+
     const httpService = {
       get: httpGet,
       post:
@@ -89,11 +105,7 @@ describe('DependencyTrackService', () => {
           }),
         ),
       axiosRef: {
-        defaults: {
-          headers: {
-            common: {} as Record<string, string>,
-          },
-        },
+        defaults: httpDefaults,
       },
     };
 
@@ -111,6 +123,7 @@ describe('DependencyTrackService', () => {
       service,
       httpGet,
       httpPost: httpService.post,
+      httpDefaults: httpService.axiosRef.defaults,
       httpHeaders: httpService.axiosRef.defaults.headers.common,
     };
   };
@@ -127,6 +140,33 @@ describe('DependencyTrackService', () => {
 
     expect(httpHeaders['X-Api-Key']).toBe('api-key');
     expect(httpHeaders.Authorization).toBeUndefined();
+  });
+
+  it('configures a proxy only for Dependency-Track requests', () => {
+    const { httpDefaults } = createService({
+      config: {
+        ...dependencyTrackConfig,
+        DEPENDENCY_TRACK_PROXY_URL: 'http://proxy-user:proxy-pass@proxy.local:8080',
+      },
+    });
+
+    expect(httpDefaults.proxy).toEqual({
+      protocol: 'http',
+      host: 'proxy.local',
+      port: 8080,
+      auth: {
+        username: 'proxy-user',
+        password: 'proxy-pass',
+      },
+    });
+  });
+
+  it('does not configure a Dependency-Track proxy when it is not set', () => {
+    const { httpDefaults } = createService({
+      config: dependencyTrackConfig,
+    });
+
+    expect(httpDefaults.proxy).toBeUndefined();
   });
 
   it('requires a Dependency-Track API key', () => {
@@ -155,6 +195,47 @@ describe('DependencyTrackService', () => {
       lastError:
         'Dependency Track connection failed: connect ECONNREFUSED 127.0.0.1:8080',
     });
+  });
+
+  it('logs Dependency-Track connection failures without raw request metadata', async () => {
+    const loggerError = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    const requestError = Object.assign(
+      new Error('connect ECONNREFUSED 172.29.1.91:8080'),
+      {
+        config: {
+          headers: {
+            'X-Api-Key': 'secret-token',
+          },
+        },
+        request: {
+          _header: 'X-Api-Key: secret-token',
+        },
+      },
+    );
+
+    try {
+      createService({
+        config: dependencyTrackConfig,
+        get: jest.fn(() => throwError(() => requestError)),
+      });
+
+      await flushPromises();
+
+      expect(loggerError).toHaveBeenCalledWith(
+        'Dependency Track connection failed: connect ECONNREFUSED 172.29.1.91:8080',
+      );
+      expect(loggerError.mock.calls).toHaveLength(1);
+      expect(loggerError.mock.calls[0]).toHaveLength(1);
+      expect(
+        loggerError.mock.calls
+          .map((call) => call.map((argument) => String(argument)).join(' '))
+          .join('\n'),
+      ).not.toContain('secret-token');
+    } finally {
+      loggerError.mockRestore();
+    }
   });
 
   it('syncs Dependency-Track project findings into the dashboard summary', async () => {

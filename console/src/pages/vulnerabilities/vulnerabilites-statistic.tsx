@@ -1,32 +1,42 @@
 import { useWorkspaceSelector } from '@/hooks/useWorkspaceSelector';
+import type { VulnerabilitiesControllerGetVulnerabilitiesStatisticsParams } from '@/services/apis/gen/queries';
 import { useVulnerabilitiesControllerGetVulnerabilitiesStatistics } from '@/services/apis/gen/queries';
 import clsx from 'clsx';
-import { useLocation } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+
+type VulnerabilityStatisticParams =
+  VulnerabilitiesControllerGetVulnerabilitiesStatisticsParams & {
+    assetServiceIds?: string[];
+  };
 
 interface VulnerabilitiesStatisticProps {
   targetId?: string;
+  assetServiceId?: string;
 }
 const VulnerabilitiesStatistic = ({
   targetId,
+  assetServiceId,
 }: VulnerabilitiesStatisticProps) => {
   const { selectedWorkspace } = useWorkspaceSelector();
-  const location = useLocation();
+  const [searchParams] = useSearchParams();
 
-  // Extract targetId from URL search params if present
-  const urlParams = new URLSearchParams(location.search);
-  const urlTargetId = urlParams.get('targetId') || undefined;
+  const urlTargetId = searchParams.get('targetId') || undefined;
+  const urlAssetServiceId = searchParams.get('assetServiceId') || undefined;
 
-  // Use targetId from props if provided, otherwise use from URL
-  if (!targetId) {
-    targetId = urlTargetId;
-  }
+  const effectiveTargetId = targetId || urlTargetId;
+  const effectiveAssetServiceId = assetServiceId || urlAssetServiceId;
+
+  const statisticParams: VulnerabilityStatisticParams = {
+    workspaceId: selectedWorkspace ?? '',
+    targetIds: effectiveTargetId ? [effectiveTargetId] : undefined,
+    assetServiceIds: effectiveAssetServiceId
+      ? [effectiveAssetServiceId]
+      : undefined,
+  };
 
   const { data, isLoading } =
     useVulnerabilitiesControllerGetVulnerabilitiesStatistics(
-      {
-        workspaceId: selectedWorkspace ?? '',
-        ...(targetId ? { targetIds: [targetId] } : {}),
-      },
+      statisticParams,
       {
         query: {
           enabled: !!selectedWorkspace,

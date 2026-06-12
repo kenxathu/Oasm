@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"oasm-worker/internal/config"
 	"os"
@@ -174,11 +175,35 @@ func Start(ctx context.Context, cfg *config.Config) {
 						netLog.Success("Connected to internal network: %s", cfg.Network)
 					}
 
-					if err := client.WorkerDownloadTools(sessionCtx); err != nil {
-						sysLog.ErrorE("Download tools failed", err)
+					if cfg.ToolSyncTimeoutSeconds <= 0 {
+						sysLog.ErrorE(
+							"Invalid tool sync timeout",
+							fmt.Errorf("WORKER_TOOL_SYNC_TIMEOUT_SECONDS must be greater than 0"),
+						)
 						stateMu.Unlock()
 						continue
 					}
+
+					toolSyncCtx, toolSyncCancel := context.WithTimeout(
+						sessionCtx,
+						time.Duration(cfg.ToolSyncTimeoutSeconds)*time.Second,
+					)
+					err := client.WorkerDownloadTools(toolSyncCtx)
+					toolSyncCancel()
+					if err != nil {
+						if errors.Is(toolSyncCtx.Err(), context.DeadlineExceeded) {
+							sysLog.Warning(
+								"Tool sync timed out after %d seconds; continuing with cached tools",
+								cfg.ToolSyncTimeoutSeconds,
+							)
+						} else {
+							sysLog.ErrorE("Download tools failed", err)
+							stateMu.Unlock()
+							continue
+						}
+					}
+
+					checkNucleiTemplates(sessionCtx)
 
 					go startRemoteExecuteHandler(sessionCtx, client, workspaceRoot, toolPath)
 

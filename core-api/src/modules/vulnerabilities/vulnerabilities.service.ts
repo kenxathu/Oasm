@@ -16,6 +16,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { In, Repository } from 'typeorm';
+import type { SelectQueryBuilder } from 'typeorm';
 import { AgentsCompletionsService } from '../agents/agents.completions';
 import { User } from '../auth/entities/user.entity';
 import { JobsRegistryService } from '../jobs-registry/jobs-registry.service';
@@ -101,6 +102,7 @@ export class VulnerabilitiesService {
       page,
       sortOrder,
       targetIds,
+      assetServiceIds,
       q,
       status,
       severity,
@@ -136,6 +138,8 @@ export class VulnerabilitiesService {
     if (targetIds) {
       queryBuilder.andWhere('targets.id IN (:...targetIds)', { targetIds });
     }
+
+    this.applyAssetServiceFilter(queryBuilder, assetServiceIds);
 
     // Add search query if provided
     if (q) {
@@ -176,7 +180,9 @@ export class VulnerabilitiesService {
 
     // Filter by tags (using overlap operator with raw SQL)
     if (Array.isArray(tags) && tags.length > 0) {
-      const conditions = tags.map((_, i) => `:tag${i} = ANY(vulnerabilities.tags)`).join(' OR ');
+      const conditions = tags
+        .map((_, i) => `:tag${i} = ANY(vulnerabilities.tags)`)
+        .join(' OR ');
       const params: Record<string, string> = {};
       tags.forEach((tag, i) => {
         params[`tag${i}`] = tag;
@@ -225,7 +231,7 @@ export class VulnerabilitiesService {
   async getVulnerabilitiesStatistics(
     query: GetVulnerabilitiesStatisticsQueryDto,
   ) {
-    const { workspaceId, targetIds } = query;
+    const { workspaceId, targetIds, assetServiceIds } = query;
 
     const queryBuilder = this.vulnerabilitiesRepository
       .createQueryBuilder('vulnerabilities')
@@ -245,6 +251,8 @@ export class VulnerabilitiesService {
     if (targetIds) {
       queryBuilder.andWhere('targets.id IN (:...targetIds)', { targetIds });
     }
+
+    this.applyAssetServiceFilter(queryBuilder, assetServiceIds);
 
     const result = await queryBuilder.getRawMany();
 
@@ -282,6 +290,23 @@ export class VulnerabilitiesService {
    */
   async markIsArchived(id: string, isArchived: boolean): Promise<void> {
     await this.vulnerabilitiesRepository.update({ id }, { isArchived });
+  }
+
+  private applyAssetServiceFilter(
+    queryBuilder: SelectQueryBuilder<Vulnerability>,
+    assetServiceIds: string[] | undefined,
+  ) {
+    if (!assetServiceIds?.length) return;
+
+    queryBuilder.andWhere(
+      `EXISTS (
+        SELECT 1
+        FROM asset_services asset_service_filter
+        WHERE asset_service_filter."assetId" = assets.id
+          AND asset_service_filter.id IN (:...assetServiceIds)
+      )`,
+      { assetServiceIds },
+    );
   }
 
   /**

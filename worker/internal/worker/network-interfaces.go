@@ -186,9 +186,9 @@ func isPhysicalInterface(name string) bool {
 
 func isPrivateIP(ip net.IP) bool {
 	privateRanges := []string{
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
+		"10.0.0.0/24",
+		"172.29.1.0/8",
+		"10.29.0.0/16",
 	}
 	for _, cidr := range privateRanges {
 		_, ipNet, _ := net.ParseCIDR(cidr)

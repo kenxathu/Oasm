@@ -12,6 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  getInternalNetworksControllerGetManyNetworkInterfacesQueryKey,
   useInternalNetworksControllerCreateTargetsFromInterfaces,
   useInternalNetworksControllerGetManyNetworkInterfaces,
   type GetManyNetworkInterfacesResponseDtoDataItem,
@@ -24,7 +25,7 @@ import { useQueryClient, useMutation } from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import { format } from 'date-fns';
 import { TargetIcon, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AddNetworkInterfaceDialog } from './add-network-interface-dialog';
@@ -49,12 +50,32 @@ export function NetworkInterfacesTable({
 }: NetworkInterfacesTableProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data } = useInternalNetworksControllerGetManyNetworkInterfaces(
-    networkId,
-    {
+  const networkInterfacesParams = useMemo(
+    () => ({
       limit: 50,
       page: 1,
-    },
+    }),
+    [],
+  );
+  const networkInterfacesQueryKey = useMemo(
+    () =>
+      getInternalNetworksControllerGetManyNetworkInterfacesQueryKey(
+        networkId,
+        networkInterfacesParams,
+      ),
+    [networkId, networkInterfacesParams],
+  );
+  const refreshNetworkInterfaces = useCallback(
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: networkInterfacesQueryKey,
+        exact: true,
+      }),
+    [networkInterfacesQueryKey, queryClient],
+  );
+  const { data } = useInternalNetworksControllerGetManyNetworkInterfaces(
+    networkId,
+    networkInterfacesParams,
     {
       query: {
         refetchInterval: 5000,
@@ -66,9 +87,7 @@ export function NetworkInterfacesTable({
     useInternalNetworksControllerCreateTargetsFromInterfaces({
       mutation: {
         onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: ['internal-networks'],
-          });
+          void refreshNetworkInterfaces();
         },
         onError: (error: AxiosError<{ message: string }>) => {
           toast.error(error.response?.data.message);
@@ -85,14 +104,10 @@ export function NetworkInterfacesTable({
       deleteNetworkInterface(
         networkId,
         id,
-      ) as unknown as Promise<DefaultMessageResponseDto>,
+    ) as unknown as Promise<DefaultMessageResponseDto>,
     onSuccess: () => {
       toast.success('Network interface deleted');
-      queryClient.invalidateQueries({
-        predicate: (query) =>
-          query.queryKey[0] ===
-          `/api/internal-networks/${networkId}/network-interfaces`,
-      });
+      void refreshNetworkInterfaces();
     },
     onError: (error: AxiosError<{ message: string }>) => {
       toast.error(error.response?.data.message ?? 'Failed to delete interface');
@@ -150,13 +165,9 @@ export function NetworkInterfacesTable({
           />
           <AddNetworkInterfaceDialog
             networkId={networkId}
-            onSuccess={() =>
-              queryClient.invalidateQueries({
-                predicate: (query) =>
-                  query.queryKey[0] ===
-                  `/api/internal-networks/${networkId}/network-interfaces`,
-              })
-            }
+            onSuccess={() => {
+              void refreshNetworkInterfaces();
+            }}
           />
           <Button
             onClick={handleStartDiscovery}

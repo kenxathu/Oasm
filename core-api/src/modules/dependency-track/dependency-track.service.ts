@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
-import { AxiosResponse } from 'axios';
+import type { AxiosProxyConfig, AxiosResponse } from 'axios';
 import { CronJob } from 'cron';
 import { firstValueFrom } from 'rxjs';
 import { DependencyTrackCheckResponseDto } from './dtos/dependency-track-check-response.dto';
@@ -30,6 +30,7 @@ export class DependencyTrackService implements OnModuleInit {
   private readonly syncCron: string;
   private readonly bomProcessingTimeoutMs: number;
   private readonly bomProcessingPollIntervalMs: number;
+  private readonly proxyUrl?: string;
   private readonly projectUuid?: string;
   private readonly projectName?: string;
   private readonly projectVersion?: string;
@@ -53,6 +54,9 @@ export class DependencyTrackService implements OnModuleInit {
     this.bomProcessingPollIntervalMs = this.getConfigNumber(
       'DEPENDENCY_TRACK_BOM_PROCESSING_POLL_INTERVAL_MS',
       DependencyTrackService.DEFAULT_BOM_PROCESSING_POLL_INTERVAL_MS,
+    );
+    this.proxyUrl = this.configService.get<string>(
+      'DEPENDENCY_TRACK_PROXY_URL',
     );
     this.projectUuid = this.configService.get<string>(
       'DEPENDENCY_TRACK_PROJECT_UUID',
@@ -83,9 +87,10 @@ export class DependencyTrackService implements OnModuleInit {
 
     this.httpService.axiosRef.defaults.headers.common['X-Api-Key'] =
       this.apiKey;
+    this.configureProxy();
 
     void this.testConnection().catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = this.getErrorMessage(error);
       this.dashboardCache = {
         ...this.dashboardCache,
         status: 'error',
@@ -120,11 +125,8 @@ export class DependencyTrackService implements OnModuleInit {
       );
       this.logger.log('Dependency Track connection established successfully');
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Dependency Track connection failed: ${message}`,
-        error as Error,
-      );
+      const message = this.getErrorMessage(error);
+      this.logger.error(`Dependency Track connection failed: ${message}`);
       throw new Error(`Dependency Track connection failed: ${message}`);
     }
   }
@@ -151,11 +153,8 @@ export class DependencyTrackService implements OnModuleInit {
         this.getFileNameFromUrl(sbomUrl) ?? 'sbom.json',
       );
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Dependency Track SBOM scan failed: ${message}`,
-        error as Error,
-      );
+      const message = this.getErrorMessage(error);
+      this.logger.error(`Dependency Track SBOM scan failed: ${message}`);
       throw new BadRequestException(
         `Failed to scan SBOM with Dependency Track: ${message}`,
       );
@@ -188,11 +187,8 @@ export class DependencyTrackService implements OnModuleInit {
         file.originalname,
       );
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Dependency Track SBOM file scan failed: ${message}`,
-        error as Error,
-      );
+      const message = this.getErrorMessage(error);
+      this.logger.error(`Dependency Track SBOM file scan failed: ${message}`);
       throw new BadRequestException(
         `Failed to scan SBOM file with Dependency Track: ${message}`,
       );
@@ -233,11 +229,8 @@ export class DependencyTrackService implements OnModuleInit {
 
       return this.dashboardCache;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Dependency-Track dashboard sync failed: ${message}`,
-        error as Error,
-      );
+      const message = this.getErrorMessage(error);
+      this.logger.error(`Dependency-Track dashboard sync failed: ${message}`);
       this.dashboardCache = {
         ...this.dashboardCache,
         status: 'error',
@@ -522,6 +515,56 @@ export class DependencyTrackService implements OnModuleInit {
 
     const value = Number(rawValue);
     return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  private configureProxy(): void {
+    const proxyUrl = this.proxyUrl?.trim();
+    if (!proxyUrl) {
+      return;
+    }
+
+    const proxy = this.parseProxyUrl(proxyUrl);
+    this.httpService.axiosRef.defaults.proxy = proxy;
+  }
+
+  private parseProxyUrl(proxyUrl: string): AxiosProxyConfig {
+    let parsed: URL;
+    try {
+      parsed = new URL(proxyUrl);
+    } catch {
+      throw new Error('DEPENDENCY_TRACK_PROXY_URL must be a valid URL');
+    }
+
+    const protocol = parsed.protocol.replace(':', '');
+    if (protocol !== 'http' && protocol !== 'https') {
+      throw new Error(
+        'DEPENDENCY_TRACK_PROXY_URL must use http or https protocol',
+      );
+    }
+
+    const port = parsed.port
+      ? Number(parsed.port)
+      : protocol === 'https'
+        ? 443
+        : 80;
+    const proxy: AxiosProxyConfig = {
+      protocol,
+      host: parsed.hostname,
+      port,
+    };
+
+    if (parsed.username) {
+      proxy.auth = {
+        username: decodeURIComponent(parsed.username),
+        password: decodeURIComponent(parsed.password),
+      };
+    }
+
+    return proxy;
   }
 
   private resolveBomProjectFields(

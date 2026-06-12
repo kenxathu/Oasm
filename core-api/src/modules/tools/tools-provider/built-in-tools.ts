@@ -85,8 +85,11 @@ export const builtInTools: Tool[] = [
     description:
       'Nuclei is a fast, customizable vulnerability scanner powered by the global security community and built on a simple YAML-based DSL, enabling collaboration to tackle trending vulnerabilities on the internet. It helps you find vulnerabilities in your applications, APIs, networks, DNS, and cloud configurations.',
     logoUrl: '/static/images/nuclei.png',
-    command: 'nuclei -duc -u {{value}} -j --silent',
+    command:
+      'sh -lc \'template_dir="${NUCLEI_TEMPLATES_DIR:-$HOME/nuclei-templates}"; if [ ! -d "$template_dir" ] || ! find "$template_dir" -type f \\( -name "*.yaml" -o -name "*.yml" \\) -print -quit 2>/dev/null | grep -q .; then echo "Nuclei templates are not installed at $template_dir. Fix worker DNS/proxy and run nuclei -ut, or mount templates into that directory." >&2; exit 2; fi; exec nuclei -duc -u "{{value}}" -t "$template_dir" -j --silent\'',
     parser: (result: string) => {
+      if (!result?.trim()) return [];
+
       const initialVulnerabilities = result
         .split('\n')
         .filter((line) => line.trim())
@@ -164,7 +167,7 @@ export const builtInTools: Tool[] = [
     description:
       'Nmap (Network Mapper) is a free and open-source network scanner used to discover hosts and services on a computer network. It sends specially crafted packets and analyzes the responses to identify open ports, services, and OS versions.',
     logoUrl: '/static/images/nmap.png',
-    command: 'nmap -sV -sC -oX - {{value}} | cat',
+    command: 'nmap -sV -sC -Pn - {{value}} | cat',
     parser: (result: string | undefined) => {
       if (!result) return undefined;
       const ports: number[] = [];

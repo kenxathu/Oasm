@@ -15,7 +15,11 @@ COPY . .
 RUN npm run build
 RUN mkdir -p /tmp/proto && cp -r src/proto/* /tmp/proto/
 RUN rm -rf src test node_modules/.cache
-
+RUN rm -rf node-chrome-demo \
+    mkdir node-chrome-demo \
+    cd node-chrome-demo 
+RUN npm init -y 
+RUN npm install puppeteer
 # Production stage
 FROM base
 
@@ -32,4 +36,5 @@ COPY --from=builder /tmp/proto ./proto
 
 EXPOSE 6276
 
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/main.js","&& node", "dist/chrome.js"]
+# CMD ["node", "dist/chrome.js"]

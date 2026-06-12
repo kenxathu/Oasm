@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ListVulnerabilities } from '../vulnerabilities/list-vulnerabilitys';
+import VulnerabilitiesStatistic from '../vulnerabilities/vulnerabilites-statistic';
 import HTTPXStatusCode from './components/status-code';
 import { TechnologyTooltip } from './components/technology-tooltip';
 
@@ -113,292 +115,304 @@ export default function DetailAsset() {
 
   return (
     <Page title={value} isShowButtonGoBack>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 py-4 overflow-y-auto">
-        {/* Main Content - Left 2 Columns */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* General Card */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Globe className="h-5 w-5 text-blue-500" />
-                General
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">
-                    Domain
-                  </h4>
-                  <span className="font-mono text-sm break-all">{value}</span>
-                </div>
-
-                {httpResponses?.status_code && (
+      <div className="space-y-6 overflow-y-auto pb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 py-4">
+          {/* Main Content - Left 2 Columns */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* General Card */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Globe className="h-5 w-5 text-blue-500" />
+                  General
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-3 rounded-lg bg-muted/50">
                     <h4 className="text-sm font-medium text-muted-foreground mb-1">
-                      HTTP Status
+                      Domain
                     </h4>
-                    <HTTPXStatusCode httpResponse={httpResponses} />
+                    <span className="font-mono text-sm break-all">
+                      {value}
+                    </span>
+                  </div>
+
+                  {httpResponses?.status_code && (
+                    <div className="p-3 rounded-lg bg-muted/50">
+                      <h4 className="text-sm font-medium text-muted-foreground mb-1">
+                        HTTP Status
+                      </h4>
+                      <HTTPXStatusCode httpResponse={httpResponses} />
+                    </div>
+                  )}
+                </div>
+
+                {httpResponses?.title && (
+                  <div className="p-3 rounded-lg bg-muted/50">
+                    <h4 className="text-sm font-medium text-muted-foreground mb-1">
+                      Page Title
+                    </h4>
+                    <p className="text-sm break-words">
+                      {httpResponses.title}
+                    </p>
                   </div>
                 )}
-              </div>
 
-              {httpResponses?.title && (
-                <div className="p-3 rounded-lg bg-muted/50">
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">
-                    Page Title
-                  </h4>
-                  <p className="text-sm break-words">{httpResponses.title}</p>
-                </div>
-              )}
-
-              {/* Tags */}
-              <div className="flex flex-wrap gap-2 pt-2">
-                {(tags ?? []).map((tag) => (
-                  <Badge
-                    key={tag.id}
-                    variant="secondary"
-                    className="flex items-center gap-1"
-                  >
-                    <Tag size={12} /> {tag.tag}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Network Card */}
-          {(ipAddresses?.length || tls?.host || tls?.port) && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Network className="h-5 w-5 text-indigo-500" />
-                  Network
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {ipAddresses && ipAddresses.length > 0 && (
-                    <div className="md:col-span-2 p-3 rounded-lg bg-muted/50">
-                      <h4 className="text-sm font-medium text-muted-foreground mb-2">
-                        IP Addresses
-                      </h4>
-                      <div className="flex flex-wrap gap-1.5">
-                        {ipAddresses.map((ip) => (
-                          <Badge
-                            key={ip}
-                            variant="outline"
-                            className="font-mono text-xs"
-                          >
-                            {ip}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {tls?.host && (
-                    <div className="p-3 rounded-lg bg-muted/50">
-                      <h4 className="text-sm font-medium text-muted-foreground mb-1">
-                        Host
-                      </h4>
-                      <span className="font-mono text-sm">{tls.host}</span>
-                    </div>
-                  )}
-                  {tls?.port && (
-                    <div className="p-3 rounded-lg bg-muted/50">
-                      <h4 className="text-sm font-medium text-muted-foreground mb-1">
-                        Port
-                      </h4>
-                      <span className="font-mono text-sm">{tls.port}</span>
-                    </div>
-                  )}
+                {/* Tags */}
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {(tags ?? []).map((tag) => (
+                    <Badge
+                      key={tag.id}
+                      variant="secondary"
+                      className="flex items-center gap-1"
+                    >
+                      <Tag size={12} /> {tag.tag}
+                    </Badge>
+                  ))}
                 </div>
               </CardContent>
             </Card>
-          )}
 
-          {/* HTTP Response Card */}
-          {httpResponses?.raw_header && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <ChartNoAxesGantt className="h-5 w-5 text-slate-500" />
-                  HTTP Response
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <div className="bg-muted/50 rounded-lg p-4 border">
-                    <pre className="whitespace-pre-wrap leading-relaxed text-sm font-mono overflow-x-auto">
-                      {httpResponses.raw_header}
-                    </pre>
-                  </div>
-                  <div className="absolute top-2 right-2">
-                    <CopyButton text={httpResponses.raw_header} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Sidebar - Right Column */}
-        <div className="space-y-6">
-          {/* SSL/TLS Card */}
-          {tls && (
-            <Card
-              className={cn(
-                daysLeft !== undefined &&
-                  (daysLeft < 0
-                    ? 'border-red-500/20'
-                    : daysLeft < 30
-                      ? 'border-yellow-500/20'
-                      : 'border-green-500/20'),
-              )}
-            >
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <ShieldCheck className="h-5 w-5 text-green-500" />
-                  SSL/TLS Certificate
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {daysLeft !== undefined && (
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                      <span className="text-sm text-muted-foreground">
-                        Status
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'flex items-center gap-1',
-                          daysLeft < 0
-                            ? 'text-red-500 border-red-500'
-                            : daysLeft < 30
-                              ? 'text-yellow-500 border-yellow-500'
-                              : 'text-green-500 border-green-500',
-                        )}
-                      >
-                        <Lock size={14} />
-                        {daysLeft < 0
-                          ? 'Expired'
-                          : daysLeft < 30
-                            ? 'Expiring Soon'
-                            : 'Valid'}
-                      </Badge>
-                    </div>
-                  )}
-
-                  {tls.issuer_org?.[0] && (
-                    <div className="p-3 rounded-lg bg-muted/50">
-                      <h4 className="text-xs font-medium text-muted-foreground mb-1">
-                        Issuer
-                      </h4>
-                      <p className="text-sm">{tls.issuer_org[0]}</p>
-                    </div>
-                  )}
-
-                  {tls.subject_cn && (
-                    <div className="p-3 rounded-lg bg-muted/50">
-                      <h4 className="text-xs font-medium text-muted-foreground mb-1">
-                        Common Name
-                      </h4>
-                      <p className="text-sm break-words">{tls.subject_cn}</p>
-                    </div>
-                  )}
-
-                  {certAgeStartDate && (
-                    <div className="p-3 rounded-lg bg-muted/50">
-                      <h4 className="text-xs font-medium text-muted-foreground mb-1">
-                        Certificate Age
-                      </h4>
-                      <p className="text-sm">
-                        {certAgeDisplay} (
-                        {dayjs(tls.not_before).format('DD MMM, YYYY')})
-                      </p>
-                    </div>
-                  )}
-
-                  {daysLeft !== undefined && (
-                    <div className="p-3 rounded-lg bg-muted/50">
-                      <h4 className="text-xs font-medium text-muted-foreground mb-1">
-                        Expires On
-                      </h4>
-                      <p className="text-sm">
-                        {dayjs(tls.not_after).format('DD MMM, YYYY')}{' '}
-                        <span
-                          className={cn(
-                            daysLeft < 0
-                              ? 'text-red-500'
-                              : daysLeft < 30
-                                ? 'text-yellow-500'
-                                : 'text-green-500',
-                          )}
-                        >
-                          (
-                          {daysLeft < 0
-                            ? Math.abs(daysLeft) + ' days ago'
-                            : daysLeft + ' days left'}
-                          )
-                        </span>
-                      </p>
-                    </div>
-                  )}
-
-                  {tls.subject_an && tls.subject_an.length > 1 && (
-                    <div className="p-3 rounded-lg bg-muted/50">
-                      <h4 className="text-xs font-medium text-muted-foreground mb-2">
-                        Alternate Names
-                      </h4>
-                      <div className="flex flex-wrap gap-1.5">
-                        {tls.subject_an.slice(0, 3).map((name) => (
-                          <Badge
-                            key={name}
-                            variant="outline"
-                            className="font-mono text-xs"
-                          >
-                            {name}
-                          </Badge>
-                        ))}
-                        {tls.subject_an.length > 3 && (
-                          <Badge variant="secondary" className="text-xs">
-                            +{tls.subject_an.length - 3}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Technologies Card */}
-          {httpResponses?.techList &&
-            (httpResponses.techList as unknown as TechnologyDetailDTO[])
-              .length > 0 && (
+            {/* Network Card */}
+            {(ipAddresses?.length || tls?.host || tls?.port) && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-lg">
-                    <Layers className="h-5 w-5 text-purple-500" />
-                    Technologies
+                    <Network className="h-5 w-5 text-indigo-500" />
+                    Network
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {(
-                      httpResponses.techList as unknown as TechnologyDetailDTO[]
-                    ).map(
-                      (item) =>
-                        item.name && (
-                          <TechnologyTooltip tech={item} key={item.name} />
-                        ),
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {ipAddresses && ipAddresses.length > 0 && (
+                      <div className="md:col-span-2 p-3 rounded-lg bg-muted/50">
+                        <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                          IP Addresses
+                        </h4>
+                        <div className="flex flex-wrap gap-1.5">
+                          {ipAddresses.map((ip) => (
+                            <Badge
+                              key={ip}
+                              variant="outline"
+                              className="font-mono text-xs"
+                            >
+                              {ip}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {tls?.host && (
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <h4 className="text-sm font-medium text-muted-foreground mb-1">
+                          Host
+                        </h4>
+                        <span className="font-mono text-sm">{tls.host}</span>
+                      </div>
+                    )}
+                    {tls?.port && (
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <h4 className="text-sm font-medium text-muted-foreground mb-1">
+                          Port
+                        </h4>
+                        <span className="font-mono text-sm">{tls.port}</span>
+                      </div>
                     )}
                   </div>
                 </CardContent>
               </Card>
             )}
+
+            {/* HTTP Response Card */}
+            {httpResponses?.raw_header && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <ChartNoAxesGantt className="h-5 w-5 text-slate-500" />
+                    HTTP Response
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="relative">
+                    <div className="bg-muted/50 rounded-lg p-4 border">
+                      <pre className="whitespace-pre-wrap leading-relaxed text-sm font-mono overflow-x-auto">
+                        {httpResponses.raw_header}
+                      </pre>
+                    </div>
+                    <div className="absolute top-2 right-2">
+                      <CopyButton text={httpResponses.raw_header} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Sidebar - Right Column */}
+          <div className="space-y-6">
+            {/* SSL/TLS Card */}
+            {tls && (
+              <Card
+                className={cn(
+                  daysLeft !== undefined &&
+                    (daysLeft < 0
+                      ? 'border-red-500/20'
+                      : daysLeft < 30
+                        ? 'border-yellow-500/20'
+                        : 'border-green-500/20'),
+                )}
+              >
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <ShieldCheck className="h-5 w-5 text-green-500" />
+                    SSL/TLS Certificate
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {daysLeft !== undefined && (
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                        <span className="text-sm text-muted-foreground">
+                          Status
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'flex items-center gap-1',
+                            daysLeft < 0
+                              ? 'text-red-500 border-red-500'
+                              : daysLeft < 30
+                                ? 'text-yellow-500 border-yellow-500'
+                                : 'text-green-500 border-green-500',
+                          )}
+                        >
+                          <Lock size={14} />
+                          {daysLeft < 0
+                            ? 'Expired'
+                            : daysLeft < 30
+                              ? 'Expiring Soon'
+                              : 'Valid'}
+                        </Badge>
+                      </div>
+                    )}
+
+                    {tls.issuer_org?.[0] && (
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <h4 className="text-xs font-medium text-muted-foreground mb-1">
+                          Issuer
+                        </h4>
+                        <p className="text-sm">{tls.issuer_org[0]}</p>
+                      </div>
+                    )}
+
+                    {tls.subject_cn && (
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <h4 className="text-xs font-medium text-muted-foreground mb-1">
+                          Common Name
+                        </h4>
+                        <p className="text-sm break-words">{tls.subject_cn}</p>
+                      </div>
+                    )}
+
+                    {certAgeStartDate && (
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <h4 className="text-xs font-medium text-muted-foreground mb-1">
+                          Certificate Age
+                        </h4>
+                        <p className="text-sm">
+                          {certAgeDisplay} (
+                          {dayjs(tls.not_before).format('DD MMM, YYYY')})
+                        </p>
+                      </div>
+                    )}
+
+                    {daysLeft !== undefined && (
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <h4 className="text-xs font-medium text-muted-foreground mb-1">
+                          Expires On
+                        </h4>
+                        <p className="text-sm">
+                          {dayjs(tls.not_after).format('DD MMM, YYYY')}{' '}
+                          <span
+                            className={cn(
+                              daysLeft < 0
+                                ? 'text-red-500'
+                                : daysLeft < 30
+                                  ? 'text-yellow-500'
+                                  : 'text-green-500',
+                            )}
+                          >
+                            (
+                            {daysLeft < 0
+                              ? Math.abs(daysLeft) + ' days ago'
+                              : daysLeft + ' days left'}
+                            )
+                          </span>
+                        </p>
+                      </div>
+                    )}
+
+                    {tls.subject_an && tls.subject_an.length > 1 && (
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <h4 className="text-xs font-medium text-muted-foreground mb-2">
+                          Alternate Names
+                        </h4>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tls.subject_an.slice(0, 3).map((name) => (
+                            <Badge
+                              key={name}
+                              variant="outline"
+                              className="font-mono text-xs"
+                            >
+                              {name}
+                            </Badge>
+                          ))}
+                          {tls.subject_an.length > 3 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{tls.subject_an.length - 3}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Technologies Card */}
+            {httpResponses?.techList &&
+              (httpResponses.techList as unknown as TechnologyDetailDTO[])
+                .length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <Layers className="h-5 w-5 text-purple-500" />
+                      Technologies
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        httpResponses.techList as unknown as TechnologyDetailDTO[]
+                      ).map(
+                        (item) =>
+                          item.name && (
+                            <TechnologyTooltip tech={item} key={item.name} />
+                          ),
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Vulnerabilities</h2>
+          <VulnerabilitiesStatistic assetServiceId={id} />
+          <ListVulnerabilities assetServiceId={id} />
         </div>
       </div>
     </Page>

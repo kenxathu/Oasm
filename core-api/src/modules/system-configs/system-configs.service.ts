@@ -162,8 +162,10 @@ export class SystemConfigsService implements OnModuleInit {
       } else {
         this.logger.log('Version check skipped (within 12 hours)');
       }
-    } catch (error) {
-      this.logger.error('Error during version check:', error);
+    } catch (error: unknown) {
+      this.logger.error(
+        `Error during version check: ${this.getErrorMessage(error)}`,
+      );
     }
   }
 
@@ -172,9 +174,15 @@ export class SystemConfigsService implements OnModuleInit {
     try {
       const response = await axios.get(apiUrlGithubReleaseLatestVersion);
       return response.data as ReleaseVersion;
-    } catch (error) {
-      this.logger.error('Error fetching latest version:', error);
+    } catch (error: unknown) {
+      this.logger.error(
+        `Error fetching latest version: ${this.getErrorMessage(error)}`,
+      );
       return null;
     }
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }

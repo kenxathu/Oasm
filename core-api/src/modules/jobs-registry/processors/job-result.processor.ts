@@ -34,6 +34,7 @@ export class JobResultProcessor extends WorkerHost {
     bullJob: BullJob<{ workerId: string; jobId: string; resultRef: string }>,
   ): Promise<void> {
     const { workerId, jobId, resultRef } = bullJob.data;
+    let data: DataPayloadResult | undefined;
 
     const job = await this.jobsRegistryService.findJobForUpdate(
       workerId,
@@ -49,10 +50,14 @@ export class JobResultProcessor extends WorkerHost {
     const fileName = rest.join('/');
 
     try {
-      const data = await this.storageService.readJsonFile<DataPayloadResult>(
+      data = await this.storageService.readJsonFile<DataPayloadResult>(
         fileName,
         bucket,
       );
+
+      if (data?.error) {
+        throw new Error(this.getResultErrorMessage(data));
+      }
 
       const isBuiltInTools = job.tool.type === WorkerType.BUILT_IN;
 
@@ -81,10 +86,6 @@ export class JobResultProcessor extends WorkerHost {
           job,
         });
       }
-      if (data?.error) {
-        throw new Error('Job reported error');
-      }
-
       const completedJob = await this.jobRepo.save({
         ...job,
         status: JobStatus.COMPLETED,
@@ -120,9 +121,9 @@ export class JobResultProcessor extends WorkerHost {
 
       if (isLastAttempt) {
         await this.jobsRegistryService.handleJobError(
-          { jobId, data: {} as DataPayloadResult },
+          { jobId, data: data ?? ({} as DataPayloadResult) },
           job,
-          e,
+          e instanceof Error ? e : new Error(String(e)),
         );
 
         const nextStepJobCount =
@@ -146,5 +147,17 @@ export class JobResultProcessor extends WorkerHost {
       // Throw error to let BullMQ handle retry logic
       throw e;
     }
+  }
+
+  private getResultErrorMessage(data: DataPayloadResult): string {
+    const raw = data.raw?.trim();
+    if (raw) return raw;
+
+    const payload = data.payload as unknown;
+    if (typeof payload === 'string' && payload.trim()) {
+      return payload.trim();
+    }
+
+    return 'Job reported error';
   }
 }

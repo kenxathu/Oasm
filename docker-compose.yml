@@ -56,6 +56,7 @@ services:
       - '16276:16276'
     environment:
       <<: *proxy-environment
+      DEPENDENCY_TRACK_PROXY_URL: "${DEPENDENCY_TRACK_PROXY_URL:-${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}}"
       POSTGRES_HOST: postgres
       REDIS_URL: redis://:password@redis:6379/0
       GEO_IP_URL: geo-ip:4360
@@ -98,6 +99,7 @@ services:
       WORKER_GRPC_PORT: 16276
       WORKER_MAX_CONCURRENCY: 10
       WORKER_TOOL_PATH: /app/oasm-tools
+      WORKER_TOOL_SYNC_TIMEOUT_SECONDS: 90
     logging:
       driver: json-file
       options:

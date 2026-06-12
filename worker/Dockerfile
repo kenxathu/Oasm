@@ -36,7 +36,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     git \
     perl \
+    libjson-perl \
     libnet-ssleay-perl \
+    libxml-writer-perl \
     libwww-perl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -68,10 +70,12 @@ USER worker
 #   WORKER_GRPC_HOST - gRPC server host (default: localhost)
 #   WORKER_GRPC_PORT - gRPC server port (default: 16276)
 #   WORKER_TOOL_PATH - Tool path (default: oasm-tools)
+#   WORKER_TOOL_SYNC_TIMEOUT_SECONDS - Tool download/init timeout (default: 90)
 ENV WORKER_MAX_CONCURRENCY=10
 ENV WORKER_GRPC_HOST=localhost
 ENV WORKER_GRPC_PORT=16276
 ENV WORKER_TOOL_PATH=oasm-tools
+ENV WORKER_TOOL_SYNC_TIMEOUT_SECONDS=90
 
 # Metadata
 LABEL org.opencontainers.image.title="OASM Worker"

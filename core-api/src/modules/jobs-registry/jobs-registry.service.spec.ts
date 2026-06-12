@@ -1,4 +1,10 @@
-import { BullMQName, JobStatus } from '@/common/enums/enum';
+import {
+  BullMQName,
+  JobPriority,
+  JobStatus,
+  ToolCategory,
+  WorkerType,
+} from '@/common/enums/enum';
 import { RedisService } from '@/services/redis/redis.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { NotFoundException } from '@nestjs/common';
@@ -10,6 +16,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { DataAdapterService } from '../data-adapter/data-adapter.service';
 import { StorageService } from '../storage/storage.service';
+import { Asset } from '../assets/entities/assets.entity';
 import { ToolsService } from '../tools/tools.service';
 import { JobErrorLog } from './entities/job-error-log.entity';
 import { JobHistory } from './entities/job-history.entity';
@@ -20,6 +27,7 @@ type LooseMock = ReturnType<typeof jest.fn> & {
   mockRejectedValue(value: unknown): LooseMock;
   mockResolvedValue(value: unknown): LooseMock;
   mockResolvedValueOnce(value: unknown): LooseMock;
+  mockImplementation(fn: (...args: unknown[]) => unknown): LooseMock;
   mockReturnThis(): LooseMock;
   mockReturnValue(value: unknown): LooseMock;
 };
@@ -133,6 +141,137 @@ describe('JobsRegistryService', () => {
     service = module.get<JobsRegistryService>(JobsRegistryService);
     // Manually set optional toolsService since @Optional() dependencies may not be injected in tests
     (service as any).toolsService = mockToolsService;
+  });
+
+  describe('createNewJob', () => {
+    const asset = {
+      id: 'asset-uuid',
+      value: 'baovietfund.com.vn',
+      target: { id: 'target-uuid' },
+    };
+    const jobHistory = { id: 'history-uuid' };
+
+    function mockAssetJobRepositories() {
+      const assetQueryBuilder = {
+        where: mockFn().mockReturnThis(),
+        andWhere: mockFn().mockReturnThis(),
+        innerJoin: mockFn().mockReturnThis(),
+        getMany: mockFn().mockResolvedValue([asset]),
+      };
+      const assetRepository = {
+        createQueryBuilder: mockFn().mockReturnValue(assetQueryBuilder),
+      };
+      const jobRepository = {
+        create: mockFn().mockImplementation((value) => value),
+        save: mockFn().mockResolvedValue([]),
+      };
+
+      mockDataSource.getRepository.mockImplementation((entity) => {
+        if (entity === Job) return jobRepository;
+        if (entity === Asset) return assetRepository;
+        return assetRepository;
+      });
+
+      return { jobRepository };
+    }
+
+    it('should use the stored command for provider tools such as Nessus', async () => {
+      const { jobRepository } = mockAssetJobRepositories();
+
+      await service.createNewJob({
+        tool: {
+          name: 'nessus',
+          description: 'Nessus vulnerability scan',
+          category: ToolCategory.VULNERABILITIES,
+          command: 'nessus -h {{value}} -p 8834',
+          priority: JobPriority.HIGH,
+          type: WorkerType.PROVIDER,
+        },
+        assetIds: [asset.id],
+        workspaceId: 'workspace-uuid',
+        workflow: undefined as never,
+        jobHistory: jobHistory as never,
+      });
+
+      expect(jobRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: 'nessus -h baovietfund.com.vn -p 8834',
+          jobName: 'nessus',
+        }),
+      );
+    });
+
+    it('should fall back to the built-in command when a built-in tool command is empty', async () => {
+      const { jobRepository } = mockAssetJobRepositories();
+
+      await service.createNewJob({
+        tool: {
+          name: 'nuclei',
+          description: 'Nuclei vulnerability scan',
+          category: ToolCategory.VULNERABILITIES,
+          command: '',
+          priority: JobPriority.HIGH,
+          type: WorkerType.BUILT_IN,
+        },
+        assetIds: [asset.id],
+        workspaceId: 'workspace-uuid',
+        workflow: undefined as never,
+        jobHistory: jobHistory as never,
+      });
+
+      expect(jobRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: expect.stringContaining('baovietfund.com.vn'),
+          jobName: 'nuclei',
+        }),
+      );
+    });
+
+    it('should prefer the code-defined command for built-in tools with stale stored commands', async () => {
+      const { jobRepository } = mockAssetJobRepositories();
+
+      await service.createNewJob({
+        tool: {
+          name: 'nuclei',
+          description: 'Nuclei vulnerability scan',
+          category: ToolCategory.VULNERABILITIES,
+          command: 'nuclei -duc -u {{value}} -j --silent',
+          priority: JobPriority.HIGH,
+          type: WorkerType.BUILT_IN,
+        },
+        assetIds: [asset.id],
+        workspaceId: 'workspace-uuid',
+        workflow: undefined as never,
+        jobHistory: jobHistory as never,
+      });
+
+      expect(jobRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: expect.stringContaining('Nuclei templates are not installed'),
+          jobName: 'nuclei',
+        }),
+      );
+    });
+
+    it('should reject jobs for tools without a configured command', async () => {
+      mockAssetJobRepositories();
+
+      await expect(
+        service.createNewJob({
+          tool: {
+            name: 'custom-provider',
+            description: 'Custom provider',
+            category: ToolCategory.VULNERABILITIES,
+            command: '',
+            type: WorkerType.PROVIDER,
+          },
+          assetIds: [asset.id],
+          workspaceId: 'workspace-uuid',
+          workflow: undefined as never,
+          jobHistory: jobHistory as never,
+        }),
+      ).rejects.toThrow('Tool command is not configured for custom-provider');
+    });
   });
 
   describe('getScanActivity', () => {
@@ -821,13 +960,21 @@ describe('JobsRegistryService', () => {
       };
 
       mockToolsService.getToolByNames.mockResolvedValue([
-        { name: 'tool-b', priority: 4, category: 'SUBDOMAINS' },
+        {
+          name: 'tool-b',
+          description: 'Next workflow tool',
+          priority: 4,
+          category: ToolCategory.SUBDOMAINS,
+          command: 'tool-b {{value}}',
+        },
       ]);
 
       const mockQueryBuilder = {
         where: mockFn().mockReturnThis(),
         andWhere: mockFn().mockReturnThis(),
-        getMany: mockFn().mockResolvedValue([{ id: 'asset-1', isPrimary: true }]),
+        getMany: mockFn().mockResolvedValue([
+          { id: 'asset-1', isPrimary: true, value: 'baovietfund.com.vn' },
+        ]),
       };
       const mockJobRepo = {
         create: mockFn().mockReturnValue({}),

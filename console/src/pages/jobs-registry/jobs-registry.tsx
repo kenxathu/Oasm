@@ -50,6 +50,7 @@ const JobsRegistryPage = () => {
     {
       query: {
         enabled: true,
+        refetchInterval: 5000,
       },
     },
   );

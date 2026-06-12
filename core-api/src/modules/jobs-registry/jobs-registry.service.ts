@@ -203,9 +203,7 @@ export class JobsRegistryService {
       );
 
       // Step 3: iterate tools and create jobs
-      const defaultCommand = builtInTools.find(
-        (t) => t.name === tool.name,
-      )?.command;
+      const defaultCommand = this.getToolCommand(tool);
 
       // Create jobs for each asset service
       for (const assetService of assetServices) {
@@ -219,7 +217,7 @@ export class JobsRegistryService {
           tool,
           priority: priority ?? 4,
           jobHistory,
-          command: bindingCommand(defaultCommand ?? '', {
+          command: bindingCommand(defaultCommand, {
             // Use the default command template for HTTP_PROBE
             value: assetService.value,
             port: assetService.port.toString(),
@@ -244,9 +242,7 @@ export class JobsRegistryService {
       const filteredAssets = this.filterAssetsByCategory(assets, tool.category);
 
       // Step 3: iterate tools and create jobs
-      const defaultCommand = builtInTools.find(
-        (t) => t.name === tool.name,
-      )?.command;
+      const defaultCommand = this.getToolCommand(tool);
 
       for (const asset of filteredAssets) {
         const job = jobRepo.create({
@@ -258,7 +254,7 @@ export class JobsRegistryService {
           tool,
           priority: priority ?? 4,
           jobHistory,
-          command: bindingCommand(defaultCommand ?? '', {
+          command: bindingCommand(defaultCommand, {
             value: asset.value,
           }),
           isSaveRawResult: isSaveRawResult ?? false,
@@ -315,6 +311,26 @@ export class JobsRegistryService {
     }
 
     return await assetsQueryBuilder.getMany();
+  }
+
+  private getToolCommand(tool: Tool): string {
+    const builtInCommand = builtInTools.find(
+      (builtInTool) => builtInTool.name === tool.name,
+    )?.command;
+
+    if (builtInCommand?.trim() && tool.type !== WorkerType.PROVIDER) {
+      return builtInCommand;
+    }
+
+    if (tool.command?.trim()) {
+      return tool.command;
+    }
+
+    if (builtInCommand?.trim()) {
+      return builtInCommand;
+    }
+
+    throw new Error(`Tool command is not configured for ${tool.name}`);
   }
 
   /**

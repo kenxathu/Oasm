@@ -20,6 +20,7 @@ describe('JobResultProcessor', () => {
   >;
   let storageService: Record<'readJsonFile' | 'deleteFile', MockFn>;
   let jobRepo: { save: MockFn };
+  let dataAdapterService: { syncData: MockFn };
 
   beforeEach(() => {
     jobsRegistryService = {
@@ -35,10 +36,13 @@ describe('JobResultProcessor', () => {
     jobRepo = {
       save: jest.fn(),
     };
+    dataAdapterService = {
+      syncData: jest.fn(),
+    };
 
     processor = new JobResultProcessor(
       jobsRegistryService as unknown as JobsRegistryService,
-      { syncData: jest.fn() } as unknown as DataAdapterService,
+      dataAdapterService as unknown as DataAdapterService,
       { publish: jest.fn() } as unknown as RedisService,
       storageService as unknown as StorageService,
       jobRepo as never,
@@ -87,14 +91,71 @@ describe('JobResultProcessor', () => {
         attemptsMade: 0,
         opts: { attempts: 1 },
       } as never),
-    ).rejects.toThrow('Job reported error');
+    ).rejects.toThrow('tool timeout');
 
-    expect(jobsRegistryService.handleJobError).toHaveBeenCalled();
+    expect(jobsRegistryService.handleJobError).toHaveBeenCalledWith(
+      { jobId: job.id, data: { error: true, raw: 'tool timeout', payload: [] } },
+      job,
+      expect.objectContaining({ message: 'tool timeout' }),
+    );
     expect(jobsRegistryService.getNextStepForJob).toHaveBeenCalledWith(job);
     expect(jobsRegistryService.markWorkflowDone).not.toHaveBeenCalled();
+    expect(dataAdapterService.syncData).not.toHaveBeenCalled();
     expect(storageService.deleteFile).toHaveBeenCalledWith(
       'job-1.json',
       'job-results',
     );
+  });
+
+  it('should report built-in worker errors before parsing raw scanner output', async () => {
+    const job = {
+      id: 'job-2',
+      isSaveData: true,
+      isPublishEvent: false,
+      tool: { name: 'nuclei', type: WorkerType.BUILT_IN },
+      status: JobStatus.IN_PROGRESS,
+      jobHistory: { id: 'history-1' },
+      asset: {
+        id: 'asset-1',
+        target: { id: 'target-1' },
+      },
+    } as unknown as Job;
+
+    jobsRegistryService.findJobForUpdate.mockResolvedValue(job);
+    jobsRegistryService.getNextStepForJob.mockResolvedValue(0);
+    storageService.readJsonFile.mockResolvedValue({
+      error: true,
+      raw: 'Nuclei templates are not installed at /home/worker/nuclei-templates',
+    });
+
+    await expect(
+      processor.process({
+        data: {
+          workerId: 'worker-1',
+          jobId: job.id,
+          resultRef: 'job-results/job-2.json',
+        },
+        attemptsMade: 0,
+        opts: { attempts: 1 },
+      } as never),
+    ).rejects.toThrow(
+      'Nuclei templates are not installed at /home/worker/nuclei-templates',
+    );
+
+    expect(jobsRegistryService.handleJobError).toHaveBeenCalledWith(
+      {
+        jobId: job.id,
+        data: {
+          error: true,
+          raw: 'Nuclei templates are not installed at /home/worker/nuclei-templates',
+        },
+      },
+      job,
+      expect.objectContaining({
+        message:
+          'Nuclei templates are not installed at /home/worker/nuclei-templates',
+      }),
+    );
+    expect(dataAdapterService.syncData).not.toHaveBeenCalled();
   });
 });
